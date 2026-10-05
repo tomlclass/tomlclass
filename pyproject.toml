@@ -1,0 +1,138 @@
+[project]
+name = "tomlclass"
+version = "0.3.0"
+description = "Annotation-driven TOML configuration with comment preservation — declare classes, keep your config files human."
+readme = "README.pypi.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "wsu2059q" },
+]
+keywords = ["toml", "config", "configuration", "comments", "dataclass", "declarative"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/wsu2059q/tomlclass"
+Repository = "https://github.com/wsu2059q/tomlclass"
+Issues = "https://github.com/wsu2059q/tomlclass/issues"
+Changelog = "https://github.com/wsu2059q/tomlclass/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-timeout>=2.3",
+    "pytest-xdist>=3.5",
+    "hypothesis>=6.100",
+    "tomli>=2.0; python_version < '3.11'",
+]
+watch = [
+    "watchfiles>=1.0",
+]
+lint = [
+    "ruff>=0.8",
+    "basedpyright>=1.20",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tomlclass"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+include = ["src/**/*.py", "tests/**/*.py"]
+
+extend-exclude = [
+    "__pycache__",
+    ".git",
+    ".venv",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+# Rule sets (inherited from the ErisPulse toolchain):
+# E/W pycodestyle, F pyflakes, I isort, B bugbear, C4 comprehensions,
+# UP pyupgrade, SIM simplify, RET return, PIE cleanup, RUF ruff-specific,
+# PTH pathlib, PERF perflint, FURB refurb, PL pylint-logic, N pep8-naming
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "RET", "PIE", "RUF", "PTH", "PERF", "FURB", "PL", "N"]
+
+ignore = [
+    "RUF001",  # ambiguous-unicode-character-string — false positives on CJK punctuation
+    "RUF002",  # ambiguous-unicode-character-docstring
+    "RUF003",  # ambiguous-unicode-character-comment
+    "PLC0415", # import-outside-top-level — lazy imports are a normal pattern here
+    "PLR0911", # too-many-return-statements
+    "PLR0912", # too-many-branches
+    "PLR0913", # too-many-arguments
+    "PLR0915", # too-many-statements
+    "PLR0917", # too-many-positional-arguments
+    "PLR2004", # magic-value-comparison
+]
+
+[tool.basedpyright]
+include = ["src"]
+exclude = [
+    "**/__pycache__",
+    "**/.venv",
+    "build",
+    "dist",
+    "tests",
+]
+typeCheckingMode = "standard"
+pythonVersion = "3.10"
+# Promote real type bugs to error (baseline: 0 errors in src/)
+reportReturnType = "error"
+reportArgumentType = "error"
+reportAttributeAccessIssue = "error"
+reportCallIssue = "error"
+reportOperatorIssue = "error"
+reportAssignmentType = "error"
+reportOptionalMemberAccess = "error"
+reportOptionalOperand = "error"
+reportOptionalIterable = "error"
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
+reportMissingTypeArgument = "warning"
+reportMissingParameterType = "warning"
+reportUnusedImport = "warning"
+reportUnusedParameter = "warning"
+reportUnusedFunction = "warning"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+minversion = "8.0"
+addopts = [
+    "--timeout=60",
+    "--timeout-method=thread",
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+    "--cov=src/tomlclass",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+]
