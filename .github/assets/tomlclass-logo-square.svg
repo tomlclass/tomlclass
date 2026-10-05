@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" role="img" aria-labelledby="title">
+  <title id="title">tomlclass</title>
+  <defs>
+    <!-- vertical three-stop gradient (top blue -> purple -> bottom pink), same stops as the banner logo -->
+    <linearGradient id="grad" gradientUnits="userSpaceOnUse" x1="0" y1="499" x2="0" y2="21">
+      <stop offset="0" stop-color="#F08CBD"/>
+      <stop offset=".38" stop-color="#C9A5EF"/>
+      <stop offset=".62" stop-color="#9CC8F2"/>
+      <stop offset="1" stop-color="#80C8F8"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(93.46,357.14) scale(0.93409)">
+    <path d="M106,60 H46 V460 H106" fill="none" stroke="#ffffff" stroke-width="122" stroke-linecap="round" stroke-linejoin="round"/><path d="M226,60 H494" fill="none" stroke="#ffffff" stroke-width="122" stroke-linecap="round" stroke-linejoin="round"/><path d="M360,60 V460" fill="none" stroke="#ffffff" stroke-width="122" stroke-linecap="round" stroke-linejoin="round"/><path d="M840.6,383.1 A120,200 0 1 1 840.6,136.9" fill="none" stroke="#ffffff" stroke-width="122" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="150 118"/><path d="M958.6,60 H1038.6 V460 H958.6" fill="none" stroke="#ffffff" stroke-width="122" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M106,60 H46 V460 H106" fill="none" stroke="url(#grad)" stroke-width="78" stroke-linecap="round" stroke-linejoin="round"/><path d="M226,60 H494" fill="none" stroke="url(#grad)" stroke-width="78" stroke-linecap="round" stroke-linejoin="round"/><path d="M360,60 V460" fill="none" stroke="url(#grad)" stroke-width="78" stroke-linecap="round" stroke-linejoin="round"/><path d="M840.6,383.1 A120,200 0 1 1 840.6,136.9" fill="none" stroke="url(#grad)" stroke-width="78" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="150 118"/><path d="M958.6,60 H1038.6 V460 H958.6" fill="none" stroke="url(#grad)" stroke-width="78" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
