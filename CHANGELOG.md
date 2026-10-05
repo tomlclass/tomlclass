@@ -1,0 +1,195 @@
+# Changelog
+
+All releases follow [Semantic Versioning](https://semver.org/).
+
+> **How to read this log**
+> Each release is grouped into typed sections. Read the "Removed" and "Changed" sections of a release before upgrading.
+
+> **Contributing entries**
+> To add an entry for a new release, append it under the matching version number with the date and the main contributor. If an entry for the topic already exists, update it to its final state — do not append process notes (see "Writing rules" below).
+
+---
+
+## Rules
+
+### Required information
+
+1. **Contributor**: every change is attributed as `@GithubUsername`
+2. **Change type**: sections follow the type taxonomy below
+3. **Date**: release dates use the `YYYY/MM/DD` format
+
+### Writing rules
+
+The log records the **net difference between release states**, not the development process:
+
+1. **Final state only**: multiple changes to the same topic within one release update the existing entry to its final state — no "later fixed / no longer…" process notes
+2. **In-version fixes are not listed separately**: a defect introduced and fixed within the same release is folded into the feature entry it belongs to
+3. **Reverts leave no trace**: features introduced and reverted before release are not recorded
+4. **No trivia**: test-only additions, repository moves and internal tweaks without user impact are omitted
+5. **Merge per topic**: multiple doc/test updates to the same module are merged into one entry
+6. **Short summaries**: the **summary** is 2–3 sentences stating the release theme and the 1–3 largest changes; **upgrade notes** and **notes** give conclusions and actions only
+
+### Change types
+
+| Type | Label | Description | Example |
+|------|-------|-------------|---------|
+| Added | Added | New features, APIs or modules | New command system |
+| Improved | Improved | Performance, UX or code improvements | Optimized memory usage |
+| Changed | Changed | Behavior, config or API changes (non-breaking) | Adjusted default setting |
+| Fixed | Fixed | Bug fixes | Fixed null pointer exception |
+| Removed | Removed | Deleted features, APIs or modules | Removed deprecated API |
+| Deprecated | Deprecated | Features planned for removal | Method scheduled for removal |
+| Refactored | Refactored | Internal refactoring (no public API change) | Refactored loader architecture |
+| Security | Security | Security fixes or hardening | Fixed permission vulnerability |
+
+### Example format
+
+```markdown
+  ## [version] - 2025/08/20
+  > Released
+
+  **Summary**
+  Two to three sentences on the release theme and the 1–3 largest changes.
+
+  **Upgrade notes**
+  - Recommended: upgrade / optional / skip
+  - Reasons
+
+  **Notes**
+  - Important upgrade considerations
+  - Deprecations
+  - Compatibility changes
+
+  ### Added
+
+  - By [Contributor](https://github.com/contributor)
+    - `module` feature description:
+      - point 1
+      - point 2
+
+  ### Improved
+
+  - @username
+    - Optimized module performance
+```
+
+---
+
+## [0.3.0] - Pending
+> Pending release
+
+**Summary**
+Maturity release: parser conformance against both official toml-test manifests via a live-pinned suite, fixes for two silent-corruption editing paths, and the first batch of the public-API generalization (spec-driven; see `API-SPEC-0.3.0.md`).
+
+### Fixed
+
+- @wsu2059q
+  - `engine`: a value missing after `=` raises `TOMLParseError` instead of `IndexError`, honoring the error contract on every entry point
+  - `engine`: writing a key into an implicit parent table (`[db.pool]` present, `[db]` never declared) renders a proper `[db]` block — previously the dotted line landed inside the last defined block's scope, silently changing the key's meaning
+  - `engine`: newly created root-level tables render at the end of the file instead of right after the first key-value line
+  - `engine`: bare keys are ASCII-only in both TOML versions, matching the official TOML v1.1.0 spec (non-ASCII keys use quotes)
+
+### Changed
+
+- @wsu2059q
+  - `tests`: the toml-test conformance suite covers both official manifests (`files-toml-1.0.0` under strict 1.0 and `files-toml-1.1.0` under 1.1) against a live, pinned toml-test checkout instead of a vendored snapshot with a hand-maintained whitelist; CI fetches it and runs the full suite on Linux, Windows and macOS
+
+## [0.2.1] - 2026/10/06
+> Released
+
+**Summary**
+Editing-correctness release: fixes how arrays (single-level, nested, CRLF, mixed operation sequences) and chained same-key replacements land on save, plus type-conversion and persistence fixes in the annotation layer.
+
+**Upgrade notes**
+- Recommended. Fixes concentrate on edit/save paths; nothing was removed. Two behavior changes to note:
+- `sort()` / `reverse()` on an array of tables now raise `NotImplementedError` — they previously reordered memory without ever rendering; replace the AoT wholesale via `doc[key] = [...]` instead.
+- A dotted path that passes through an `[[aot]]` segment addresses **every** element: `find("it.n")` returns the list of per-element values, `set_path()` / `update()` assign into every element. Address a single element via `doc["it"][i]`.
+
+**Notes**
+- Env overrides gained a compatible `PREFIX__FIELD` form; the existing `PREFIX_FIELD` form is unaffected.
+
+### Fixed
+
+- @wsu2059q
+  - `engine`: array edits, appends, insertions and clears now land correctly across single-level, nested, CRLF and mixed operation sequences — siblings and element comments are preserved
+  - `engine`: chained same-key replacements (scalar ↔ table ↔ array) keep only the final definition, without duplicate definitions or leftover blocks
+  - `engine`: newly appended AoT elements land at the end of the array (previously inserted before the last element on multi-element arrays)
+  - `engine`: AoT element APIs follow list semantics — `insert(index, element)` renders the new element as a block at the given position (the index was ignored and every insert landed at the end), `extend()` and `+=` render their new elements (AoT extensions existed only in memory and were silently dropped on save), and a user-built `Table` passed as an element no longer re-emits its construction-time entries
+  - `engine`: `aot[index] = {...}` replaces the element in place, rendering a block at its position (previously raised `IndexError`); `sort()` / `reverse()` on an AoT raise `NotImplementedError` instead of silently reordering memory without rendering
+  - `engine`: assigning a table or AoT back to its own key (`doc[k] += items`, `t = doc["t"]; doc["t"] = t`) is a no-op — previously it wiped the entry or emitted a duplicate header; replacing an AoT with a list containing its own elements raises instead of silently dropping them
+  - `engine`: files are read without universal-newline translation, preserving CRLF across the whole cycle; generated lines follow the file's line endings
+  - `config`: `Field(coerce=True)` conversions take effect; `list[Config]` elements load as instances and per-element edits persist; in-place `List` mutations persist
+  - `config`: `i18n_resolver` overrides on subclasses are honored; `Literal` enum validation implemented (with strict bool/int distinction)
+  - `config`: `template()` emits type-correct placeholders for required non-string fields
+  - `config`: `comments` injection covers `[[aot]]` element fields
+  - `engine`: `find()` resolves AoT paths — a `[[products]]` segment projects the rest of the path over the elements (`find("products.name")` returns the list of values, `None` for elements missing the key), and `set_path()` broadcasts into every element; `InlineTable` accepts initial mappings and renders inline; non-string keys no longer raise `TypeError`
+
+## [0.2.0] - 2026/10/06
+> Released
+
+**Summary**
+Selectable TOML semantics: every parse-facing entry point accepts a `toml_version` parameter (1.1 by default, 1.0 for strict legacy rejection), and a rtoml-style `none_value` sentinel round-trips `None` through TOML strings.
+
+**Upgrade notes**
+- Optional. Skip if you do not use version selection or None sentinels.
+
+**Notes**
+- Default semantics remain TOML 1.1 (unchanged since 0.1.2); code relying on rejecting 1.0-invalid input must pass `toml_version="1.0"`.
+
+### Added
+
+- @wsu2059q
+  - `engine`: `toml_version` parameter on `parse` / `loads` / `load` / `update` / `Config.load`
+  - `config`: `none_value` sentinel parameter on `dumps` / `loads` / `load` / `update`
+
+## [0.1.3] - 2026/10/06
+> Released
+
+### Fixed
+
+- @wsu2059q
+  - `engine`: escape-produced CR LF inside multiline basic strings is no longer normalized away
+
+## [0.1.2] - 2026/10/06
+> Released
+
+### Added
+
+- @wsu2059q
+  - `engine`: TOML 1.1 features — `\e` / `\xHH` escapes, seconds omitted from times, newlines and trailing commas in inline tables, non-ASCII bare keys (548/548 on the toml-test 1.5.0 TOML-1.1 manifest)
+  - `engine`: `dumps()` accepts a plain `Mapping`
+
+## [0.1.1] - 2026/10/05
+> Released
+
+### Added
+
+- @wsu2059q
+  - `engine`: `update()` and `Document.set_path()` for one-call lossless updates
+  - `config`: `FieldError.description` on validation errors
+
+### Changed
+
+- @wsu2059q
+  - `config`: validation messages state constraints in plain language
+
+### Fixed
+
+- @wsu2059q
+  - `engine`: writing back a nested table absent from the file no longer emits invalid TOML
+
+## [0.1.0] - 2026/10/04
+> Released
+
+**Summary**
+Initial release: lossless TOML 1.0 editing engine plus typed config annotations, zero third-party dependencies.
+
+**Notes**
+- First release; no upgrade path.
+
+### Added
+
+- @wsu2059q
+  - `engine`: lossless editing — parse → edit → dumps byte-for-byte; full toml-test 1.0 conformance (208 valid / 501 invalid)
+  - `config`: `Config` / `Field` declarative layer — templates, aggregated validation, diff write-back, env overrides, hot reload
+  - Performance: parse ≤2× tomli, 5.8–6.4× faster than tomlkit; unedited dumps ≈ O(1)
