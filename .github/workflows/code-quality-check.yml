@@ -1,0 +1,298 @@
+name: 🧪 tomlclass Test Check
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ruff-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.TOMLCLASS_BOT_APP_ID }}
+          private-key: ${{ secrets.TOMLCLASS_BOT_PRIVATE_KEY }}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra lint
+
+      - name: Run ruff check
+        id: ruff-check
+        run: |
+          echo "Running Ruff code check..."
+          ruff_output=$(uv run ruff check src/ tests/ 2>&1; echo "RUFF_EXIT_CODE=$?")
+          exit_code=${ruff_output##*RUFF_EXIT_CODE=}
+          ruff_output=${ruff_output%RUFF_EXIT_CODE=*}
+
+          echo "RUFF_OUTPUT<<EOF" >> $GITHUB_ENV
+          echo "$ruff_output" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+          if [ "$exit_code" -ne 0 ]; then
+            echo "has_ruff_issues=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_ruff_issues=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Blocking gate: failure fails the job (comment posted in the next step)
+          exit $exit_code
+
+      - name: Post Ruff check results to PR
+        if: always() && steps.ruff-check.outputs.has_ruff_issues == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const botName = '${{ steps.app-token.outputs.app-slug }}[bot]';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.login === botName &&
+              comment.body.includes('Ruff Code Check')
+            );
+
+            const message = `## Ruff Code Check Results
+
+            > Blocking check: merge is blocked until the issues below are fixed
+
+            ```
+            ${process.env.RUFF_OUTPUT}
+            ```
+            `;
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: message
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: message
+              });
+            }
+
+  pytest-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.TOMLCLASS_BOT_APP_ID }}
+          private-key: ${{ secrets.TOMLCLASS_BOT_PRIVATE_KEY }}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install project dependencies
+        run: uv sync --extra test
+
+      - name: Run tests
+        id: pytest-check
+        run: |
+          echo "Running Pytest tests..."
+          pytest_output=$(uv run pytest tests/unit -p no:cacheprovider -n auto --tb=short -q --no-cov 2>&1; echo "PYTEST_EXIT_CODE=$?")
+          exit_code=${pytest_output##*PYTEST_EXIT_CODE=}
+          pytest_output=${pytest_output%PYTEST_EXIT_CODE=*}
+          echo "$pytest_output"
+
+          echo "PYTEST_OUTPUT<<EOF" >> $GITHUB_ENV
+          echo "$pytest_output" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+          if [ "$exit_code" -ne 0 ]; then
+            echo "has_errors=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_errors=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$exit_code" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Post test success to PR
+        if: always() && steps.pytest-check.outputs.has_errors != 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const botName = '${{ steps.app-token.outputs.app-slug }}[bot]';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.login === botName &&
+              (comment.body.includes('Test Results') || comment.body.includes('Test Passed'))
+            );
+
+            const message = `## Test Passed
+
+            All tests completed successfully.
+            `;
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: message
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: message
+              });
+            }
+
+      - name: Post test results to PR
+        if: always() && steps.pytest-check.outputs.has_errors == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const botName = '${{ steps.app-token.outputs.app-slug }}[bot]';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.login === botName &&
+              (comment.body.includes('Test Results') || comment.body.includes('Test Passed'))
+            );
+
+            const output = process.env.PYTEST_OUTPUT || '';
+            const lines = output.split('\n');
+            const MAX_LINES = 50;
+            const truncated = lines.length > MAX_LINES;
+            const displayLines = truncated ? lines.slice(-MAX_LINES) : lines;
+            const displayOutput = displayLines.join('\n');
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let message;
+            if (truncated) {
+              message = `## Tests failed — merge blocked
+
+            > Output truncated to last ${MAX_LINES} lines (total: ${lines.length} lines)
+            > [View full output in Actions](${runUrl})
+
+            \`\`\`
+            ... (top ${lines.length - MAX_LINES} lines omitted)
+            ${displayOutput}
+            \`\`\`
+            `;
+            } else {
+              message = `## Tests failed — merge blocked
+
+            \`\`\`
+            ${displayOutput}
+            \`\`\`
+            `;
+            }
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: message
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: message
+              });
+            }
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run basedpyright type check
+        run: uv run basedpyright src/tomlclass
+
+  security-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Run pip-audit on locked dependencies
+        run: |
+          uv export --format requirements-txt --no-hashes --no-emit-project -o requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt --strict
