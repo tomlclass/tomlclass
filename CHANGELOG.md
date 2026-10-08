@@ -75,6 +75,22 @@ The log records the **net difference between release states**, not the developme
 
 ---
 
+## [0.3.1] - Pending
+> Pending release
+
+**Summary**
+Contract-and-consistency patch: comment reads now cover source comments everywhere, path and nesting errors fold into the documented `ValueError`/`TOMLParseError` contract, and the `extra` option is validated and honored per mode.
+
+### Fixed
+
+- @wsu2059q
+  - `engine`: `Table.comments[key]` reads source comments, not just runtime overrides — the whole view protocol (`in` / `len` / `iter` / `del`) covers both; source comments materialize byte-exact and render unchanged
+  - `engine`: out-of-range `[int]` path indexes raise `ValueError` instead of `IndexError`, restoring the documented path-error contract
+  - `engine`: documents nested deeper than 200 levels raise `TOMLParseError` instead of `RecursionError`, closing the last path that escaped the error contract
+  - `config`: the `extra` mode is validated at class definition — invalid values (including `"Forbid"`) raise `ConfigError` instead of silently disabling strictness
+  - `config`: `extra="allow"` now exposes unknown keys on the instance and in `to_dict()` (previously `allow` and `ignore` behaved identically)
+  - `config`: self-referencing annotations (`children: list["Node"]`) resolve correctly; `env_prefix="APP_"` (trailing underscore) now behaves identically to `"APP"`
+
 ## [0.3.0] - 2026/10/08
 > Released
 
