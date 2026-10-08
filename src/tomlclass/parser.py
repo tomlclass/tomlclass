@@ -134,6 +134,7 @@ class Parser:
             raise TOMLParseError(f"unsupported TOML version {version!r} (use '1.0' or '1.1')")
         self.v11 = version == "1.1"
         self._bare_key_re = _BARE_KEY_RE
+        self._depth = 0  # inline table / array nesting depth
         self._dt_offset_re = _DT_OFFSET if self.v11 else _DT_OFFSET_10
         self._dt_local_re = _DT_LOCAL if self.v11 else _DT_LOCAL_10
         self._time_re = _TIME if self.v11 else _TIME_10
@@ -382,6 +383,12 @@ class Parser:
             raise ValueError("expected end of line after key/value pair")
         self.assign_kv(keys, value)
         self.cur.entry_spans[phys] = (vstart, vend, comment_start)
+        if comment_start < self.i:
+            # materialize the source comment into the table's comment
+            # bookkeeping so Table.comments[key] reads source comments the
+            # same way it reads overrides (BUG-15). Raw form (leading '#'):
+            # render splices it byte-exact; display layers strip for reading.
+            self.cur._comments[phys] = s[comment_start : self.i]
         return "kv", (self.cur, phys)
 
     def assign_kv(self, keys: list[str], value: Any) -> tuple[str, ...]:
@@ -421,6 +428,18 @@ class Parser:
     # values                                                             #
 
     def parse_value(self, owner: tuple[Table, tuple[str, ...]] | None = None) -> Any:
+        # nesting guard: runaway recursion must escape as TOMLParseError
+        # (parse_source wraps ValueError), never as RecursionError
+        self._depth += 1
+        if self._depth > 200:
+            self._depth -= 1
+            raise ValueError("maximum nesting depth exceeded (200)")
+        try:
+            return self._parse_value(owner)
+        finally:
+            self._depth -= 1
+
+    def _parse_value(self, owner: tuple[Table, tuple[str, ...]] | None = None) -> Any:
         s = self.s
         c = s[self.i] if self.i < self.n else ""
         if c == '"':

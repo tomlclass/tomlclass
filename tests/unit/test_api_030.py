@@ -37,7 +37,7 @@ def test_path_index_addresses_aot_elements():
 
 def test_path_index_out_of_range_and_missing_raise_on_write():
     doc = tomlclass.parse("[[it]]\nn = 1\n")
-    with pytest.raises(IndexError):
+    with pytest.raises(ValueError):  # contract: path errors are ValueError
         doc.set_path("it[5].n", 0)
     with pytest.raises(KeyError):
         doc.set_path("missing[0].n", 0)
@@ -362,3 +362,90 @@ def test_template_wraps_long_comments():
     lines = [ln for ln in C.template().splitlines() if ln.startswith("#")]
     assert len(lines) > 1
     assert all(len(ln) <= 100 for ln in lines)
+
+
+# -- 0.3.1 batch: comment view source fallback, path error contract, nesting guard, extra modes
+
+
+def test_comments_view_reads_source_comments():
+    doc = tomlclass.parse("[s]\nx = 1  # line comment\ny = 2\n")
+    t = doc["s"]
+    assert t.comments["x"] == "line comment"  # source comment readable (BUG-15)
+    assert "x" in t.comments
+    assert len(t.comments) == 1  # the view lists keys that HAVE comments
+    assert list(t.comments) == ["x"]
+    t.comments["y"] = "injected"  # a key can gain one
+    assert t.comments["y"] == "injected" and len(t.comments) == 2
+    del t.comments["y"]  # suppresses (matches set_comment(path, None))
+    assert "y" not in t.comments
+    assert "# line comment" in doc.dumps() and "y = 2\n" in doc.dumps()
+    out = doc.dumps()
+    assert tomlclass.parse(out).to_dict() == {"s": {"x": 1, "y": 2}}
+
+
+def test_comments_view_roundtrip_with_override_and_suppress():
+    doc = tomlclass.parse("a = 1  # hi\n")
+    doc["a"] = 2
+    doc.root.comments["a"] = "changed"
+    assert doc.comment("a") == "changed"
+    assert doc.dumps() == "a = 2  # changed\n"
+    doc.set_comment("a", None)
+    assert doc.dumps() == "a = 2\n"
+    with pytest.raises(KeyError):
+        doc.root.comments["a"]
+
+
+def test_set_path_index_out_of_range_raises_value_error():
+    doc = tomlclass.parse("[[it]]\nn = 1\n\n[[it]]\nn = 2\n")
+    with pytest.raises(ValueError):  # contract: path errors are ValueError, not IndexError
+        doc.set_path("it[5].n", 0)
+    assert tomlclass.loads(doc.dumps()) == {"it": [{"n": 1}, {"n": 2}]}
+
+
+def test_deep_nesting_raises_toml_parse_error():
+    with pytest.raises(tomlclass.TOMLParseError):
+        tomlclass.loads("a = " + "{x=" * 500 + "1" + "}" * 500)
+    value = tomlclass.loads("a = " + "{x=" * 100 + "1" + "}" * 100)
+    node = value["a"]
+    for _ in range(100):
+        node = node["x"]
+    assert node == 1
+
+
+def test_extra_mode_invalid_raises_at_class_creation():
+    for bad in ("Forbid", "FORBID", "bogus", ""):
+        with pytest.raises(ConfigError):
+            class Bad(Config):
+                extra: ClassVar[str] = bad
+
+
+def test_extra_allow_exposes_unknown_keys(tmp_path):
+    class Allow(Config):
+        a: int = 1
+        extra: ClassVar[str] = "allow"
+
+    p = tmp_path / "c.toml"
+    p.write_text('a = 1\nmystery = "x"\n', encoding="utf-8")
+    c = Allow.load(p)
+    assert c.mystery == "x"
+    assert c.to_dict() == {"a": 1, "mystery": "x"}
+
+
+def test_extra_ignore_hides_unknown_keys_from_instance(tmp_path):
+    class Ignore(Config):
+        a: int = 1
+        extra: ClassVar[str] = "ignore"
+
+    p = tmp_path / "c.toml"
+    p.write_text('a = 1\nmystery = "x"\n', encoding="utf-8")
+    c = Ignore.load(p)
+    assert not hasattr(c, "mystery")
+    assert "mystery" in p.read_text(encoding="utf-8")  # file untouched
+
+
+def test_config_self_referencing_annotation():
+    class Node(Config):
+        children: list["Node"] = Field(default_factory=list)
+
+    n = Node()
+    assert n.children == []

@@ -58,9 +58,14 @@ def nl() -> Trivia:
     return Trivia("")
 
 
+_C_ABSENT: Any = object()
+
+
 class _CommentView(MutableMapping[str, Any]):
     """
     String-keyed view over a table's entry comments (``table.comments["port"]``).
+    Reads cover BOTH source comments and runtime overrides; ``del`` and
+    ``None`` assignment suppress a comment (source comments included).
     Multi-segment bookkeeping keys stay internal (``Table._comments``).
     """
 
@@ -70,28 +75,29 @@ class _CommentView(MutableMapping[str, Any]):
         self._table = table
 
     def __getitem__(self, key: str) -> Any:
-        value = self._table._comments.get((key,))
-        if value is None:
+        value = self._table._comments.get((key,), _C_ABSENT)
+        if value is _C_ABSENT or value is None:
             raise KeyError(key)
-        return value
+        # stored raw ("# text"); display without the hash
+        return value[1:].strip() if value.startswith("#") else value
 
     def __setitem__(self, key: str, value: Any) -> None:
         if not isinstance(key, str):
             raise TypeError(f"comment keys must be strings, got {type(key).__name__}")
-        self._table._comments[(key,)] = value
+        self._table._comments[(key,)] = f"# {value}" if value else value
 
     def __delitem__(self, key: str) -> None:
-        if (key,) not in self._table._comments:
+        if self._table._comments.get((key,)) is None:
             raise KeyError(key)
-        del self._table._comments[(key,)]
+        self._table._comments[(key,)] = None  # suppress (matches set_comment(None))
 
     def __iter__(self):
-        for phys in self._table._comments:
-            if len(phys) == 1:
+        for phys, value in self._table._comments.items():
+            if len(phys) == 1 and value:
                 yield phys[0]
 
     def __len__(self) -> int:
-        return sum(1 for phys in self._table._comments if len(phys) == 1)
+        return sum(1 for phys, value in self._table._comments.items() if len(phys) == 1 and value)
 
     def __repr__(self) -> str:
         return repr({k: self._table._comments[(k,)] for k in self})

@@ -370,7 +370,8 @@ class Document(Mapping[str, Any]):
         array of tables broadcasts the remaining path into **every** element
         (``set_path("it.n", 0)`` sets ``n = 0`` in each element); with an
         explicit index (``it[0].n``) only that element is written, and keys
-        along the indexed portion must already exist (``KeyError``/``IndexError``).
+        along the indexed portion must already exist (``KeyError``); an
+        out-of-range index raises ``ValueError``.
         ``None`` entries inside dict/list values are dropped first; a bare
         ``None`` raises :class:`TOMLTypeError` (TOML has no null — delete the
         key instead).
@@ -393,7 +394,7 @@ class Document(Mapping[str, Any]):
                 if not isinstance(node, ArrayOfTables):
                     raise KeyError(f"{seg.key!r} is not an array of tables")
                 if idx >= len(node):
-                    raise IndexError(f"element index {idx} out of range for {seg.key!r}")
+                    raise ValueError(f"element index {idx} out of range for {seg.key!r}")
                 aot, last_idx = node, idx
                 node = node[idx]
         rest = segments[last_indexed + 1 :]
@@ -434,25 +435,29 @@ class Document(Mapping[str, Any]):
         target = self._resolve_comment_target(self._split_path(dotted_path))
         if target is None:
             return None
+
+        def _display(raw: str | None) -> str | None:
+            if not raw:
+                return None
+            return raw[1:].strip() if raw.startswith("#") else raw.strip()
+
         if target[0] == "header":
             table = target[1]
             if () in table._comments:
-                return table._comments[()]  # None = original comment suppressed
+                return _display(table._comments[()])  # None = original comment suppressed
             span = table._header_comment_span
             if span is None:
                 return None
-            text = self._source[span[0] : span[1]].strip()
-            return text[1:].strip() if text.startswith("#") else None
+            return _display(self._source[span[0] : span[1]].strip())
         block, phys = target[1], target[2]
         if phys in block._comments:
-            return block._comments[phys]  # None = original comment suppressed
+            return _display(block._comments[phys])  # None = original comment suppressed
         span = block.entry_spans.get(phys)
         if span is None:
             return None
         _vs, _ve, cs = span
         line_end = self._line_end(cs)
-        text = self._source[cs:line_end].strip()
-        return text[1:].strip() if text.startswith("#") else None
+        return _display(self._source[cs:line_end].strip())
 
     def set_comment(self, dotted_path: str, comment: str | None) -> None:
         """
@@ -463,15 +468,14 @@ class Document(Mapping[str, Any]):
         target = self._resolve_comment_target(self._split_path(dotted_path))
         if target is None:
             raise KeyError(f"no such key: {dotted_path!r}")
+        # stored raw (leading '#'): source comments materialize byte-exact
+        raw = f"# {comment}" if comment else None
         if target[0] == "header":
             table = target[1]
-            if comment is None:
-                table._comments[()] = None  # suppress the original comment
-            else:
-                table._comments[()] = comment
+            table._comments[()] = raw  # None = suppress the original comment
             return
         block, phys = target[1], target[2]
-        block._comments[phys] = comment
+        block._comments[phys] = raw
 
     # -- comment resolution ---------------------------------------------- #
 

@@ -191,7 +191,7 @@ class _FieldSpec:
 class _ConfigMeta(type):
     def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
         cls = super().__new__(mcs, name, bases, namespace)
-        hints = get_type_hints(cls, include_extras=True)
+        hints = get_type_hints(cls, include_extras=True, localns={name: cls})
         doc_summary, doc_sections = _parse_docstring(namespace.get("__doc__"))
         fields: dict[str, _FieldSpec] = {}
         # inherit fields from Config bases
@@ -234,6 +234,11 @@ class _ConfigMeta(type):
                 result = resolver(raw_description) if resolver is not None else raw_description.get("default", "")
                 resolved_desc = result if isinstance(result, str) else raw_description.get("default", "")
             fields[fname] = _FieldSpec(fname, tp, opts, default, resolved_desc)
+        extra_mode = namespace.get("extra", getattr(cls, "extra", "allow"))
+        if extra_mode not in ("allow", "ignore", "forbid"):
+            raise ConfigError(
+                f"invalid extra mode {extra_mode!r} in {name} (use 'allow', 'ignore' or 'forbid')"
+            )
         cls.__schema_fields__ = fields  # type: ignore[attr-defined]
         cls.__schema_summary__ = doc_summary  # type: ignore[attr-defined]
         return cls
@@ -301,8 +306,13 @@ class Config(metaclass=_ConfigMeta):
         """
         Plain nested dict of the instance: nested ``Config`` instances become
         dicts, ``Enum`` members their values, datetimes standard-library.
+        Unknown keys are included when ``extra="allow"``.
         """
-        return {fname: _plain_instance(getattr(self, fname, None)) for fname in self.__schema_fields__}
+        out = {fname: _plain_instance(getattr(self, fname, None)) for fname in self.__schema_fields__}
+        for key, value in self.__dict__.items():
+            if not key.startswith("_") and key not in self.__schema_fields__:
+                out[key] = _plain_instance(value)
+        return out
 
     def reload(self) -> None:
         """
@@ -400,13 +410,13 @@ class Config(metaclass=_ConfigMeta):
                             continue
                         if key in element._comments:
                             if mode_all:
-                                element._comments[key] = description
+                                element._comments[key] = f"# {description}"
                             continue
                         sp = element.entry_spans.get(key)
                         if sp is None:
                             continue
                         if mode_all or not _has_trailing_comment(doc._source, sp[1]):
-                            element._comments[key] = description
+                            element._comments[key] = f"# {description}"
                     continue
                 dotted = ".".join(fpath)
                 if doc.find(dotted) is None:
@@ -531,6 +541,13 @@ class Config(metaclass=_ConfigMeta):
                 elif get_origin(spec.type) is dict:
                     value = _de_table(value)
                 setattr(instance, fname, value)
+        if getattr(cls, "extra", "allow") == "allow":
+            # unknown keys ride on the instance (and surface in to_dict);
+            # they always survive in the file, and edits to them are not
+            # diff-tracked
+            for key, value in data.items():
+                if key not in cls.__schema_fields__:
+                    setattr(instance, key, value)
         return instance
 
     def _current_data(self) -> dict[str, Any]:
@@ -839,7 +856,7 @@ def _check_constraints(
 def _apply_env(cls: type[Config], data: dict[str, Any], prefix: str) -> None:
     import os
 
-    head = prefix.upper() + "_"
+    head = prefix.upper().rstrip("_") + "_"  # "APP_" and "APP" behave identically
     for env_key, raw in os.environ.items():
         if not env_key.startswith(head):
             continue

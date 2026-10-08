@@ -161,13 +161,13 @@ def render_document(source: str, parts: list[tuple[int, int, str, Any]], root: T
                     else:
                         value_text = source[vs:ve]
                 if override_comment:
-                    ctext = block._comments[path]
+                    ctext = block._comments[path]  # raw: starts with '#', or None = suppressed
                     if ctext is None:
                         out.append(source[s:vs] + value_text)
                     else:
                         # reuse the original leading whitespace; new injections add their own separator
                         sep = source[ve:cs] if cs < e else "  "
-                        out.append(source[s:vs] + value_text + sep + f"# {ctext}")
+                        out.append(source[s:vs] + value_text + sep + ctext)
                 else:
                     out.append(source[s:vs] + value_text + source[ve:e])
             else:
@@ -207,7 +207,7 @@ def render_document(source: str, parts: list[tuple[int, int, str, Any]], root: T
                 ctext = table._comments[()]
                 span = table._header_comment_span
                 base = source[s : span[0]].rstrip() if span else source[s:e].rstrip()
-                out.append(f"{base}  # {ctext}" if ctext else base)
+                out.append(f"{base}  {ctext}" if ctext else base)
             else:
                 out.append(source[s:e])
             # empty table with runtime-added entries and no kv anchor part:
@@ -279,7 +279,7 @@ def _flush(
             full = (block._phys if top else ()) + path
             key = ".".join(format_key(k) for k in full)
             ctext = block._comments.get(full)
-            suffix = f"  # {ctext}" if ctext is not None else ""
+            suffix = f"  {ctext}" if ctext else ""
             out.append(f"{key} = {format_value(value)}{suffix}" + nl)
         out.extend(line + nl for line in block.pending_trivia)
         return
@@ -306,7 +306,7 @@ def _flush(
             full = prefix + path
             key = ".".join(format_key(k) for k in full)
             ctext = block._comments.get(full)
-            suffix = f"  # {ctext}" if ctext is not None else ""
+            suffix = f"  {ctext}" if ctext else ""
             out.append(f"{key} = {format_value(value)}{suffix}" + nl)
         out.extend(line + nl for line in block.pending_trivia)
     for path, subtable in block.pending_tables:
@@ -329,7 +329,7 @@ def _flush(
             if "".join(out).strip():
                 out.append(nl)
             ctext = element._comments.get(())
-            out.append(base_header + (f"  # {ctext}" if ctext is not None else "") + nl)
+            out.append(base_header + (f"  {ctext}" if ctext else "") + nl)
             for key, value in element.items():
                 out.append(f"{format_key(key)} = {format_value(value)}" + nl)
 
