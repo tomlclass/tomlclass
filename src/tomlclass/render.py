@@ -366,6 +366,10 @@ def _emit_aot_blocks(out: list[str], aot: Any, ids: set[int], nl: str) -> None:
             out.append(header)
             for key, value in element.items():
                 out.append(f"{format_key(key)} = {format_value(value)}" + nl)
+            # a later _visit would re-emit any pending entries registered on
+            # it as a second copy of the same lines — drop them now
+            element.pending.clear()
+            element.pending_tables.clear()
 
 
 def _render_array_edits(source: str, vs: int, ve: int, dirty_value: Any) -> str | None:

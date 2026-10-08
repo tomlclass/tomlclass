@@ -92,6 +92,11 @@ Contract-and-consistency patch plus the first pydantic interop: comment reads no
   - `engine`: `Table.comments[key]` reads source comments, not just runtime overrides — the whole view protocol (`in` / `len` / `iter` / `del`) covers both; source comments materialize byte-exact and render unchanged
   - `engine`: out-of-range `[int]` path indexes raise `ValueError` instead of `IndexError`, restoring the documented path-error contract
   - `engine`: documents nested deeper than 200 levels raise `TOMLParseError` instead of `RecursionError`, closing the last path that escaped the error contract
+  - `engine`: editing a runtime-appended array element renders the new value instead of raising `IndexError`, keeping the parsed siblings' element comments
+  - `engine`: `*= n` on an array or array-of-tables renders every copy (previously memory doubled while the output silently kept the old text); `*= 0` empties the array per list semantics
+  - `engine`: appending or inserting an element that already belongs to an array-of-tables raises `TOMLTypeError` instead of rendering that element twice
+  - `engine`: editing a runtime-appended array-of-tables element no longer emits its lines a second time
+  - `engine`: `Table.popitem` follows the dict LIFO contract and registers the deletion on save (previously it popped the first key and left the line rendered)
   - `config`: the `extra` mode is validated at class definition — invalid values (including `"Forbid"`) raise `ConfigError` instead of silently disabling strictness
   - `config`: `extra="allow"` now exposes unknown keys on the instance and in `to_dict()` (previously `allow` and `ignore` behaved identically)
   - `config`: self-referencing annotations (`children: list["Node"]`) resolve correctly; `env_prefix="APP_"` (trailing underscore) now behaves identically to `"APP"`
