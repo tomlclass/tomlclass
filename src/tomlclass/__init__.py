@@ -185,7 +185,10 @@ def dumps(doc: Document | Mapping[str, Any], *, none_value: str | None = None) -
             fresh[key] = _none_to_strings(value, none_value) if none_value is not None else value
         return fresh.dumps()
     if doc is None:
-        raise TOMLTypeError("None cannot be represented in TOML", value=doc)
+        raise TOMLTypeError(
+            "None cannot be represented in TOML — pass none_value='null' to dumps()/loads()/update(),"
+            " or model absence with an Optional Config field (its key is deleted on save)",
+            value=doc)
     raise TOMLTypeError(
         f"cannot serialize {type(doc).__name__} as a TOML document", value=doc
     )

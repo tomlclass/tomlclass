@@ -587,7 +587,10 @@ def render_inline(value: Any) -> str:
     Canonical inline rendering for any TOML value.
     """
     if value is None:
-        raise TOMLTypeError("None cannot be represented in TOML", value=value)
+        raise TOMLTypeError(
+            "None cannot be represented in TOML — pass none_value='null' to dumps()/loads()/update(),"
+            " or model absence with an Optional Config field (its key is deleted on save)",
+            value=value)
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
