@@ -79,7 +79,12 @@ The log records the **net difference between release states**, not the developme
 > Pending release
 
 **Summary**
-Contract-and-consistency patch: comment reads now cover source comments everywhere, path and nesting errors fold into the documented `ValueError`/`TOMLParseError` contract, and the `extra` option is validated and honored per mode.
+Contract-and-consistency patch plus the first pydantic interop: comment reads now cover source comments everywhere, path and nesting errors fold into the documented `ValueError`/`TOMLParseError` contract, the `extra` option is validated and honored per mode — and `BaseModel` subclasses gain lossless TOML load/save with pydantic keeping full ownership of validation.
+
+### Added
+
+- @wsu2059q
+  - `pydantic`: `TomlModel` (optional `tomlclass[pydantic]` extra) — a `BaseModel` base that loads from and saves to TOML losslessly; validation is delegated to pydantic (`model_validate`), tomlclass owns parsing, diffing and rendering; nested models become `[tables]`, `list[Model]` becomes `[[aot]]`, `Field(description=...)` and docstrings drive `template()`
 
 ### Fixed
 

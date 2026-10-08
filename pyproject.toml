@@ -38,7 +38,11 @@ test = [
     "pytest-timeout>=2.3",
     "pytest-xdist>=3.5",
     "hypothesis>=6.100",
+    "pydantic>=2.5",
     "tomli>=2.0; python_version < '3.11'",
+]
+pydantic = [
+    "pydantic>=2.5",
 ]
 watch = [
     "watchfiles>=1.0",
