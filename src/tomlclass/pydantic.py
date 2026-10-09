@@ -73,7 +73,10 @@ class TomlModel(BaseModel):
 
     Limitations (v1): attribute assignment is not re-validated; unknown-key
     handling follows pydantic's own ``model_config``; ``save()`` requires a
-    prior :meth:`load`.
+    prior :meth:`load`; multi-member unions (``Union[Server, Client]``) are
+    not model-aware — such fields are saved as inline tables and omitted from
+    :meth:`template` (single models behind ``Optional``/``Annotated`` are
+    fully supported).
     """
 
     _toml_state: _TomlDocState | None = PrivateAttr(default=None)
@@ -104,13 +107,7 @@ class TomlModel(BaseModel):
         """
         state = self._state_of()
         current = self._plain_tree(self.model_dump())
-        defaults = self._model_defaults(type(self))
-        item_defaults = {
-            name: self._model_defaults(inner)
-            for name, field in type(self).model_fields.items()
-            if (inner := self._model_of_list(field.annotation)) is not None
-        }
-        self._apply_diff(state.doc, state.snapshot, current, (), defaults, item_defaults)
+        self._apply_diff(state.doc, state.snapshot, current, (), type(self))
         state.doc.save(path)
         state.path = Path(path)
         # the file (old content + applied changes) is the new baseline — the
@@ -148,9 +145,13 @@ class TomlModel(BaseModel):
         snapshot: dict[str, Any],
         current: dict[str, Any],
         prefix: tuple[Any, ...],
-        defaults: dict[str, Any],
-        item_defaults: dict[str, dict[str, Any]],
+        model: type[BaseModel],
     ) -> None:
+        # the model rides along so every nesting level can recompute its own
+        # field defaults and list[Model] item defaults — precomputed maps
+        # only cover the top level and silently leak in nested tables
+        defaults = TomlModel._model_defaults(model)
+
         def full(key: str) -> tuple[Any, ...]:
             return (*prefix, key)
 
@@ -160,19 +161,25 @@ class TomlModel(BaseModel):
         for key, value in current.items():
             old = snapshot.get(key, _ABSENT)
             dflt = defaults.get(key, _ABSENT)
+            field = model.model_fields.get(key)
+            annotation = field.annotation if field is not None else None
+            sub_model = TomlModel._model_of(annotation)
+            item_model = TomlModel._model_of_list(annotation)
             if isinstance(value, dict):
-                sub_defaults = dflt if isinstance(dflt, dict) else {}
-                if isinstance(old, dict):
-                    TomlModel._apply_diff(doc, old, value, full(key), sub_defaults, item_defaults)
-                elif dflt is not _ABSENT and TomlModel._same_tree(value, dflt):
+                if sub_model is not None and isinstance(old, dict):
+                    TomlModel._apply_diff(doc, old, value, full(key), sub_model)
+                    continue
+                if dflt is not _ABSENT and isinstance(dflt, dict) and TomlModel._same_tree(value, dflt):
                     continue  # never-persisted nested default stays out
-                else:
-                    doc.set_path(dotted(key), value)  # new table (or replaces a scalar/array)
+                doc.set_path(dotted(key), value)  # new table (or replaces a scalar/array)
                 continue
             if isinstance(value, list):
+                if item_model is not None and isinstance(old, list):
+                    TomlModel._apply_list_diff(doc, full(key), old, value, item_model)
+                    continue
                 if old is _ABSENT and dflt is not _ABSENT and TomlModel._same_tree(value, dflt):
                     continue  # never-persisted default stays out
-                TomlModel._apply_list_diff(doc, full(key), old, value, item_defaults.get(key, {}))
+                doc.set_path(dotted(key), value)  # scalar/inline arrays: canonical replace
                 continue
             if old is _ABSENT and dflt is not _ABSENT and TomlModel._same(value, dflt):
                 continue  # never-persisted default stays out
@@ -191,7 +198,7 @@ class TomlModel(BaseModel):
         full: tuple[Any, ...],
         old: Any,
         new: list[Any],
-        item_defaults: dict[str, Any],
+        item_model: type[BaseModel],
     ) -> None:
         """
         Diff a list assignment. Lists of tables (``[[aot]]``) diff
@@ -218,7 +225,7 @@ class TomlModel(BaseModel):
             return
         shared = min(len(old_list), len(new))
         for i in range(shared):
-            TomlModel._apply_diff(doc, old_list[i], new[i], (*full, i), item_defaults, item_defaults)
+            TomlModel._apply_diff(doc, old_list[i], new[i], (*full, i), item_model)
         for _ in range(len(old_list) - len(new)):
             aot.pop()
         for i in range(len(old_list), len(new)):
@@ -269,7 +276,7 @@ class TomlModel(BaseModel):
             return a.keys() == b.keys() and all(TomlModel._same_tree(a[k], b[k]) for k in a)
         if isinstance(a, list) and isinstance(b, list):
             return len(a) == len(b) and all(
-                TomlModel._same_tree(x, y) for x, y in zip(a, b, strict=False)
+                TomlModel._same_tree(x, y) for x, y in zip(a, b, strict=True)
             )
         return TomlModel._same(a, b)
 
@@ -337,6 +344,7 @@ class TomlModel(BaseModel):
         commented out, since TOML has no null.
         """
         default = getattr(field, "default", _ABSENT)
+        # explicit None stays None (rendered commented out) — see _model_defaults
         if default is _ABSENT or default is None:
             factory = getattr(field, "default_factory", None)
             if factory is not None:
