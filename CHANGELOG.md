@@ -75,8 +75,8 @@ The log records the **net difference between release states**, not the developme
 
 ---
 
-## [0.3.1] - Pending
-> Pending release
+## [0.3.1] - 2026/10/09
+> Released
 
 **Summary**
 Contract-and-consistency patch plus the first pydantic interop: comment reads now cover source comments everywhere, path and nesting errors fold into the documented `ValueError`/`TOMLParseError` contract, the `extra` option is validated and honored per mode — and `BaseModel` subclasses gain lossless TOML load/save with pydantic keeping full ownership of validation.

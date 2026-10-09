@@ -1,6 +1,6 @@
 [project]
 name = "tomlclass"
-version = "0.3.0"
+version = "0.3.1"
 description = "Annotation-driven TOML configuration with comment preservation — declare classes, keep your config files human."
 readme = "README.pypi.md"
 requires-python = ">=3.10"
