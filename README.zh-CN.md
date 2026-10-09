@@ -46,7 +46,7 @@ TOML 1.0/1.1 解析库：无损编辑 + 类型化配置。
 | toml-test files-toml-1.0.0（严格 1.0 模式） | 205/205 valid · 474/474 invalid 全拒 |
 | toml-test files-toml-1.1.0（默认 1.1 模式） | 214/214 valid · 467/467 invalid 全拒 |
 
-速度由 [toml-bench](https://github.com/pwwang/toml-bench) 测得（load / dump，同机 5000 次迭代；0.3.0 解析无退化——与 0.1.0 相差 ±4% 以内，见[仓库内基线](tests/bench/BASELINE.md)）：
+速度由 [toml-bench](https://github.com/pwwang/toml-bench) 测得（load / dump，同机 5000 次迭代；0.3.0 解析无退化——与 0.1.0 相差 ±4% 以内，见[仓库内基线](scripts/bench/BASELINE.md)）：
 
 | 库 | rtoml 语料 | tomli 语料 |
 |---|---|---|
@@ -113,6 +113,8 @@ server.save("server.toml")           # 只写变化的键
 - [注释系统](docs/zh-CN/comments.md) —— 注释可寻址范围、注入模式
 - [迁移](docs/zh-CN/migration.md) —— 从 tomlkit 迁移，以及从 0.2.x 升级
 - [场景示例](docs/zh-CN/examples.md) —— 端到端场景
+- [贡献者技能](docs/zh-CN/skills/index.md) —— 任务手册（上手、缺陷、API、测试、文档、发布）
+- [参考事实表](docs/zh-CN/reference/index.md) —— 架构、不变量、验证门、API 面
 
 ## 环境要求
 

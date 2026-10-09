@@ -46,7 +46,7 @@ Verified against the **official toml-test suite** — both manifests, live-pinne
 | toml-test files-toml-1.0.0 (strict 1.0 mode) | 205/205 valid · 474/474 invalid rejected |
 | toml-test files-toml-1.1.0 (default 1.1 mode) | 214/214 valid · 467/467 invalid rejected |
 
-Speed measured with [toml-bench](https://github.com/pwwang/toml-bench) (load / dump over 5000 iterations on one machine; 0.3.0 adds no parse regression — within ±4% of 0.1.0 on the [in-repo baseline](tests/bench/BASELINE.md)):
+Speed measured with [toml-bench](https://github.com/pwwang/toml-bench) (load / dump over 5000 iterations on one machine; 0.3.0 adds no parse regression — within ±4% of 0.1.0 on the [in-repo baseline](scripts/bench/BASELINE.md)):
 
 | Library | rtoml corpus | tomli corpus |
 |---|---|---|
@@ -109,6 +109,8 @@ tomlclass.update("pyproject.toml", {"project.version": "1.0.0", "tool.x.y": True
 - [Comments](docs/en/comments.md) — comment addressability, injection modes
 - [Migration](docs/en/migration.md) — from tomlkit, and from tomlclass 0.2.x
 - [Examples](docs/en/examples.md) — end-to-end scenarios
+- [Contributor skills](docs/en/skills/index.md) — task playbooks (quick start, defects, API, testing, docs, release)
+- [Reference sheets](docs/en/reference/index.md) — architecture, invariants, verification gates, API surface
 
 ## Requirements
 
