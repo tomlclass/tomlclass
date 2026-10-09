@@ -2,7 +2,7 @@
 Engine benchmark: tomlclass vs tomli vs tomlkit (all pure Python, same machine).
 
 Usage:
-    uv run --with tomli --with tomlkit python tests/bench/bench.py --compare --iterations 500
+    uv run --with tomli --with tomlkit python scripts/bench/bench.py --compare --iterations 500
 """
 
 import argparse

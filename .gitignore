@@ -21,11 +21,12 @@ htmlcov/
 # uv (lockfile intentionally not committed)
 uv.lock
 
-# Editors / OS
+# Editors / OS / agents
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+.zcode/
 
 # Live toml-test checkout (CI fetches the pinned ref; see tests/integration/test_toml_test.py)
 .toml-test/

@@ -45,7 +45,7 @@ jobs:
         id: ruff-check
         run: |
           echo "Running Ruff code check..."
-          ruff_output=$(uv run ruff check src/ tests/ 2>&1; echo "RUFF_EXIT_CODE=$?")
+          ruff_output=$(uv run ruff check src/ tests/ scripts/ 2>&1; echo "RUFF_EXIT_CODE=$?")
           exit_code=${ruff_output##*RUFF_EXIT_CODE=}
           ruff_output=${ruff_output%RUFF_EXIT_CODE=*}
 
