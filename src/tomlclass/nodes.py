@@ -216,7 +216,9 @@ class Table(dict):  # type: ignore[type-arg]
         return value
 
     def popitem(self) -> tuple[str, Any]:
-        key = next(iter(self))
+        # list-like order (FIFO) would violate dict.popitem's LIFO contract;
+        # route through the hooked __delitem__ so the edit is registered
+        key = next(reversed(self))
         value = dict.__getitem__(self, key)
         del self[key]
         return key, value
@@ -321,10 +323,24 @@ class Array(list):  # type: ignore[type-arg]
             self._appended.append(object)
             list.append(self, object)
             block.array_appends[path] = self
+            # slot exists so editing this index never desyncs spans; the
+            # region rebuild re-attaches span-None elements by value
+            self.spans.append(None)
             return
         self._touch()
         self.spans.append(None)
         list.append(self, object)
+
+    def __imul__(self, factor: int) -> Array:  # type: ignore[override]
+        # list.__imul__ would duplicate elements behind the renderer's back,
+        # leaving memory and output diverging silently — rebuild through the
+        # hooked bookkeeping instead
+        self._touch_whole()
+        items = list(self) * factor
+        self.spans = [None] * len(items)
+        list.clear(self)
+        list.extend(self, items)
+        return self
 
     def extend(self, iterable: Any) -> None:
         self._touch_whole()
@@ -375,8 +391,11 @@ class Array(list):  # type: ignore[type-arg]
         if i < 0:
             i += len(self)
         if self.spans[i] is None:
-            # an appended element was edited: no source text to splice into
-            self._dirty_indices = None
+            # an appended element was edited: no source text to splice into,
+            # but the region rebuild re-splices every appended element from
+            # its current value — the parsed siblings' comments survive, so
+            # the span bookkeeping stays intact
+            pass
         else:
             self._dirty_indices.add(i)  # keep the span — render splices in place
         list.__setitem__(self, i, value)
@@ -444,7 +463,20 @@ class ArrayOfTables(Array):
             dict.__setitem__(element, key, value)  # raw: the tail anchor renders these
         return element
 
+    def _in_array(self, element: Table) -> bool:
+        """Identity membership in the live list — parsed elements included."""
+        return any(e is element for e in self)
+
     def append(self, object: Any) -> None:
+        if isinstance(object, Table) and self._in_array(object):
+            # an element that is already part of this array would render twice
+            # (fresh [[block]] plus its live position) — reject the alias
+            # instead of duplicating data
+            raise TOMLTypeError(
+                "cannot append an element that already belongs to this array-of-tables; "
+                "append a copy or a fresh mapping instead",
+                value=object,
+            )
         element = self._coerce_element(object)
         list.append(self, element)
         self._appended_elements.append(element)
@@ -456,6 +488,13 @@ class ArrayOfTables(Array):
         return any(el is element for _anchor, el in self._inserted_elements)
 
     def insert(self, index: SupportsIndex, object: Any) -> None:
+        if isinstance(object, Table) and self._in_array(object):
+            # mirror of append(): an aliased element would render twice
+            raise TOMLTypeError(
+                "cannot insert an element that already belongs to this array-of-tables; "
+                "insert a copy or a fresh mapping instead",
+                value=object,
+            )
         element = self._coerce_element(object)
         i = index.__index__()
         n = len(self)
@@ -534,6 +573,19 @@ class ArrayOfTables(Array):
                 self.pop(i)
                 return
         raise ValueError("ArrayOfTables.remove(x): x not in list")
+
+    def __imul__(self, factor: int) -> ArrayOfTables:  # type: ignore[override]
+        # element identities cannot repeat (each renders its own [[block]]),
+        # so copies are registered as fresh appended elements; factor <= 0
+        # follows list semantics and empties the array
+        if factor <= 0:
+            self.clear()
+            return self
+        base = list(self)
+        for element in base:
+            for _ in range(factor - 1):
+                self.append(dict(element.items()))
+        return self
 
     def clear(self) -> None:
         for element in list(self):
