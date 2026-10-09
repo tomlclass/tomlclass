@@ -48,6 +48,8 @@ server.save("server.toml")           # diff write-back: only changed keys are wr
 | [Examples](examples.md) | end-to-end scenarios: pyproject updates, app config lifecycle, AoT, hot reload |
 | [Migration](migration.md) | from tomlkit, and from tomlclass 0.2.x |
 
+Contributor-facing: [Skills](skills/index.md) (task playbooks) and [Reference](reference/index.md) (architecture and fact sheets).
+
 ## Installation
 
 ```bash

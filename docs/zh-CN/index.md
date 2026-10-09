@@ -48,6 +48,8 @@ server.save("server.toml")           # diff 写回：只写变化的键
 | [场景示例](examples.md) | 端到端场景：pyproject 安全更新、应用配置全流程、AoT、热重载 |
 | [迁移](migration.md) | 从 tomlkit 迁移，以及从 tomlclass 0.2.x 升级 |
 
+贡献者向：[技能](skills/index.md)（任务手册）与[参考](reference/index.md)（架构与事实表）。
+
 ## 安装
 
 ```bash

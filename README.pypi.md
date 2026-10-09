@@ -43,7 +43,7 @@ Conformance against the **official toml-test suite** (both manifests, live-pinne
 | toml-test files-toml-1.0.0 (strict 1.0 mode) | **205/205 valid, 474/474 invalid** |
 | toml-test files-toml-1.1.0 (default 1.1 mode) | **214/214 valid, 467/467 invalid** |
 
-Speed measured with [toml-bench](https://github.com/pwwang/toml-bench) (toml-test 1.5.0 + CPython tomllib test data; load/dump over 5000 iterations on one machine — methodology in the [benchmark baseline](https://github.com/tomlclass/tomlclass/blob/main/tests/bench/BASELINE.md)):
+Speed measured with [toml-bench](https://github.com/pwwang/toml-bench) (toml-test 1.5.0 + CPython tomllib test data; load/dump over 5000 iterations on one machine — methodology in the [benchmark baseline](https://github.com/wsu2059q/tomlclass/blob/main/scripts/bench/BASELINE.md)):
 
 | Library | rtoml corpus | tomli corpus |
 |---|---|---|
@@ -111,13 +111,13 @@ text = doc.dumps()                                   # only touched lines change
 
 ## Documentation
 
-- [Engine](https://github.com/tomlclass/tomlclass/blob/main/docs/en/engine.md) — parse, edit, path addressing, `update()`, comment API, errors
-- [Config](https://github.com/tomlclass/tomlclass/blob/main/docs/en/config.md) — schema declaration, template, load/save semantics, validation errors
-- [Comments](https://github.com/tomlclass/tomlclass/blob/main/docs/en/comments.md) — comment addressability, injection modes
-- [Migration](https://github.com/tomlclass/tomlclass/blob/main/docs/en/migration.md) — from tomlkit, and from 0.2.x
-- [Examples](https://github.com/tomlclass/tomlclass/blob/main/docs/en/examples.md) — end-to-end scenarios
+- [Engine](https://github.com/wsu2059q/tomlclass/blob/main/docs/en/engine.md) — parse, edit, path addressing, `update()`, comment API, errors
+- [Config](https://github.com/wsu2059q/tomlclass/blob/main/docs/en/config.md) — schema declaration, template, load/save semantics, validation errors
+- [Comments](https://github.com/wsu2059q/tomlclass/blob/main/docs/en/comments.md) — comment addressability, injection modes
+- [Migration](https://github.com/wsu2059q/tomlclass/blob/main/docs/en/migration.md) — from tomlkit, and from 0.2.x
+- [Examples](https://github.com/wsu2059q/tomlclass/blob/main/docs/en/examples.md) — end-to-end scenarios
 
-Docs are also available in [简体中文](https://github.com/tomlclass/tomlclass/blob/main/docs/zh-CN/index.md).
+Docs are also available in [简体中文](https://github.com/wsu2059q/tomlclass/blob/main/docs/zh-CN/index.md).
 
 ## Requirements
 

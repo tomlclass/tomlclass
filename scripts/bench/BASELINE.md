@@ -4,8 +4,8 @@
 > iteration count (500) — not quoted from historical data.
 > Environment: Windows 11 (10.0.26300), AMD Ryzen (Zen4, Family 25 Model 97), CPython 3.14.6,
 > tomli 2.5.0, tomlkit 0.15.1.
-> Reproduce: `uv run --with tomli --with tomlkit python tests/bench/bench.py --compare --iterations 500`
-> Corpora: `tests/bench/data/` — data0 (26,529 B, pytomlpp benchmark), data2 (3,893 B, tomli benchmark),
+> Reproduce: `uv run --with tomli --with tomlkit python scripts/bench/bench.py --compare --iterations 500`
+> Corpora: `scripts/bench/data/` — data0 (26,529 B, pytomlpp benchmark), data2 (3,893 B, tomli benchmark),
 > the same sources as community cross-benchmarks, so third-party published numbers stay comparable.
 
 ## Parsing (pure parse, 500 iters measured)
