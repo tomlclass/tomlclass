@@ -58,7 +58,7 @@ Plus the routing rule: every `Table`/`Array` mutator must go through the engine 
 3. Fix it at that layer; no patch-on-patch workarounds.
 4. Add the pytest case for the exact defect **and its neighbors** — [Testing](testing.md).
 5. Run all four gates above; all must be clean.
-6. Update the affected docs in both languages, and `CHANGELOG.md` for user-visible changes — [Updating documentation](updating-docs.md).
+6. Update the affected docs in both languages; hand user-visible library changes to the maintainer (`CHANGELOG.md` is maintainer-authored) — [Updating documentation](updating-docs.md).
 7. Commit: one topic, one-line subject; no amend or force-push unless the user asks — see `AGENTS.md`.
 
 ## 5. Traps that cost an afternoon

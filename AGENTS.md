@@ -14,7 +14,7 @@ Rules for working in this repository. Every rule reflects the current state of t
 | `docs/en/`, `docs/zh-CN/` | User documentation, bilingual mirrors — change both. |
 | `docs/{en,zh-CN}/skills/` | Contributor playbooks: quick start, defect fixing, API extension, testing, docs, release. |
 | `docs/{en,zh-CN}/reference/` | Fact sheets: architecture, invariants, verification gates, API surface. |
-| `CHANGELOG.md` | Release log; follow its "Writing rules" section. |
+| `CHANGELOG.md` | Release log, maintainer-authored — follow its "Writing rules" section; do not write entries yourself. |
 
 ## Commands
 
@@ -68,7 +68,7 @@ The data flow is a strict pipeline; changes must keep the whole chain consistent
 - Maintained surfaces: `README.md`, `README.zh-CN.md`, `README.pypi.md`, `docs/en/`, `docs/zh-CN/` (user docs, skills, reference). No other languages.
 - README structure is fixed: logo → intro → ErisPulse attribution → versioning note → badges → Capabilities (≤5 bullets, schema/config layer first) → "not a fit" boundary → Conformance & performance → Installation → Usage (declarative `Config` first; parse/edit and `update()` after) → Documentation → Requirements → License. Objective tone, no marketing.
 - `docs/en/engine.md` documents the TOML version boundary (1.1 default, `toml_version="1.0"` strict mode) and None handling (`none_value` sentinel) — keep these sections in sync with `docs/zh-CN/engine.md`.
-- User-visible changes update `CHANGELOG.md` under the current version entry per its "Writing rules": final state only, no process notes, in-version fixes folded in, merged per topic, summary ≤ 3 sentences.
+- `CHANGELOG.md` is maintainer-authored: entries carry a `@GithubUsername` attribution and record user-visible library changes only. Do not write an entry yourself — report the user-visible change in your hand-off so the maintainer can log it (its "Writing rules": final state only, no process notes, in-version fixes folded in, merged per topic, summary ≤ 3 sentences).
 - Contributor knowledge lives in `docs/en/skills/` + `docs/zh-CN/skills/` (task playbooks) and `docs/en/reference/` + `docs/zh-CN/reference/` (architecture, invariants, verification gates, API surface) — keep both languages and both sets consistent with the code they describe.
 
 ## Git Flow

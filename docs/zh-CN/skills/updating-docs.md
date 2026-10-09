@@ -21,9 +21,11 @@
 - **一致性数字**（205/474、214/467）钉在 `tests/integration/test_toml_test.py` 的 toml-test ref 与 CI 上。它们只与 `TOML_TEST_REF` 一起变更。
 - **性能表**只能按 `scripts/bench/BASELINE.md` 的方法论重新实测后更新——绝不手改测量数字。
 
-## CHANGELOG 规则
+## CHANGELOG
 
-在当前版本条目下更新，遵守文件自身的 "Writing rules"：
+`CHANGELOG.md` **由维护者撰写**：条目带 `@GithubUsername` 署名，且只记录用户可见的库行为变更。不要自行撰写条目——在交接中说明用户可见的变更，由维护者记录。纯文档与内部改动按该文件自身的 "No trivia" 规则不予记录。
+
+维护者撰写时遵守文件自身的 "Writing rules"：
 
 - 只记最终状态；不写过程；版本内修复并入所属特性条目；回滚不留痕；不记琐事；按主题合并；summary ≤ 3 句；条目署名 `@GithubUsername`；日期 `YYYY/MM/DD`。
 - 发布翻转（`> Pending release` → `> Released` + 日期）只在[发布流程](releasing.md)中发生。

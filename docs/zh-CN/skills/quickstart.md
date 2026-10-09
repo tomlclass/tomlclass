@@ -58,7 +58,7 @@ uv run --python 3.10 --extra test pytest tests/unit -q -p no:cacheprovider -o ad
 3. 在该环节修复；禁止补丁摞补丁。
 4. 为精确缺陷**及其邻域**补 pytest 用例——见[测试](testing.md)。
 5. 跑上面四门；必须全净。
-6. 受影响文档双语同步更新，用户可见变更写 `CHANGELOG.md`——见[更新文档](updating-docs.md)。
+6. 受影响文档双语同步更新；用户可见的库行为变更交由维护者记录（`CHANGELOG.md` 由维护者撰写）——见[更新文档](updating-docs.md)。
 7. 提交：一个主题、单行标题；除非用户要求，不 amend、不强推——见 `AGENTS.md`。
 
 ## 5. 会浪费一下午的坑

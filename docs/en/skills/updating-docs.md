@@ -21,9 +21,11 @@ No other languages exist — do not create them.
 - **Conformance numbers** (205/474, 214/467) are pinned to the toml-test ref in `tests/integration/test_toml_test.py` and CI. They change only together with `TOML_TEST_REF`.
 - **Performance tables** change only with a re-run of the benchmark against `scripts/bench/BASELINE.md` methodology — never hand-edit a measured number.
 
-## CHANGELOG rules
+## CHANGELOG
 
-Update under the current version entry, following the file's own "Writing rules":
+`CHANGELOG.md` is **maintainer-authored**: entries carry a `@GithubUsername` attribution and record user-visible library changes only. Do not write an entry yourself — surface the user-visible change in your hand-off so the maintainer can log it. Docs-only and internal work is omitted by the file's own "No trivia" rule.
+
+When the maintainer does write one, it follows the file's "Writing rules":
 
 - final state only; no process notes; in-version fixes fold into their feature entry; reverts leave no trace; no trivia; merge per topic; summary ≤ 3 sentences; entries attributed `@GithubUsername`; dates `YYYY/MM/DD`.
 - Release flip (`> Pending release` → `> Released` + date) happens only during the [release](releasing.md) flow.
