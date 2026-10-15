@@ -35,7 +35,7 @@ from .nodes import Array, ArrayOfTables, InlineTable, Table
 from .parser import parse_source
 from .schema import Config, Field
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 __all__ = [
     "Array",

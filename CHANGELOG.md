@@ -75,6 +75,19 @@ The log records the **net difference between release states**, not the developme
 
 ---
 
+## [0.3.2] - 2026/10/15
+> Released
+
+**Summary**
+Deletion-fidelity fix: standalone comment lines following a deleted entry or table now survive, so removing a key no longer eats the documentation of the key after it. Only the blank-line run around the deleted content goes.
+
+### Fixed
+
+- @wsu2059q
+  - `engine`: deleting an entry or table kept the comment lines that PRECEDED it but silently dropped the standalone comment lines that FOLLOWED it (they belong to the next entry) — trivia cleanup after a deletion now strips only the leading blank-line run and preserves comment lines, in both the plain and anchor-flush render paths
+
+---
+
 ## [0.3.1] - 2026/10/09
 > Released
 
