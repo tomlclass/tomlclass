@@ -83,6 +83,17 @@ def render_document(source: str, parts: list[tuple[int, int, str, Any]], root: T
 
     suppress_trivia = False
 
+    def _kept_after_dead(chunk: str) -> list[str]:
+        # trivia lines that survive a dead entry/header: comment lines
+        # document the FOLLOWING entry, so they survive; only the leading
+        # blank-line run dies with the deleted content
+        kept: list[str] = []
+        for line in chunk.splitlines(keepends=True):
+            if not kept and not line.strip():
+                continue
+            kept.append(line)
+        return kept
+
     def _dispatch_flush(kind_: str, obj: Any) -> None:
         if kind_ == "aot":
             _flush_aot_appended(out, obj, nl, flushed)
@@ -95,13 +106,18 @@ def render_document(source: str, parts: list[tuple[int, int, str, Any]], root: T
         if kind == "trivia":
             anchor_blocks = anchors.get(index)
             if suppress_trivia and not anchor_blocks:
+                if kept := _kept_after_dead(source[s:e]):
+                    out.extend(kept)
                 continue
             text = source[s:e]
             if anchor_blocks:
                 if suppress_trivia:
                     # the preceding line is dead and stays suppressed, but the
                     # anchors at this position must still flush (a whole
-                    # replacement renders its new elements right here)
+                    # replacement renders its new elements right here); the
+                    # same dead-entry cleanup applies to the trivia text
+                    if kept := _kept_after_dead(text):
+                        out.extend(kept)
                     for kind_, obj in anchor_blocks:
                         _dispatch_flush(kind_, obj)
                     continue

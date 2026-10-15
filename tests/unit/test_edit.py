@@ -61,6 +61,30 @@ def test_delete_entry():
     assert doc.dumps() == "a = 1\nc = 3\n"
 
 
+def test_delete_keeps_next_entry_comment():
+    # the standalone comment between two entries documents the FOLLOWING
+    # entry; deleting the earlier entry must not eat it (only the blank-line
+    # run around the deleted line goes)
+    source = '[t]\n# above a\na = 1\n\n# above b\nb = 2\n'
+    doc = tomlclass.parse(source)
+    del doc["t"]["a"]
+    assert doc.dumps() == '[t]\n# above a\n# above b\nb = 2\n'
+
+
+def test_delete_last_entry_blank_run_goes():
+    source = "a = 1\n\n# note\nb = 2\n\n"
+    doc = tomlclass.parse(source)
+    del doc["b"]
+    assert doc.dumps() == "a = 1\n\n# note\n"
+
+
+def test_delete_table_keeps_next_table_header_comment():
+    source = "[a]\nx = 1\n\n# about b\n[b]\ny = 2\n"
+    doc = tomlclass.parse(source)
+    del doc["a"]
+    assert doc.dumps() == "# about b\n[b]\ny = 2\n"
+
+
 def test_delete_whole_table():
     source = "keep = 1\n\n[t]\nx = 1\ny = 2\n"
     doc = tomlclass.parse(source)
