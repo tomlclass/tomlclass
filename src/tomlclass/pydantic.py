@@ -210,6 +210,10 @@ class TomlModel(BaseModel):
         dotted = TomlModel._dotted(full)
         old_list = old if isinstance(old, list) else None
         if old_list is None:
+            if all(isinstance(item, dict) for item in new):
+                # table elements: default-equal fields never persist (invariant 3)
+                defaults = TomlModel._model_defaults(item_model)
+                new = [TomlModel._appendable_element(item, defaults) for item in new]
             doc.set_path(dotted, new)  # new array (or replaces a scalar/table)
             return
         if not all(isinstance(item, dict) for item in new) or not all(
@@ -221,15 +225,71 @@ class TomlModel(BaseModel):
         aot = doc.find(dotted)
         if not isinstance(aot, ArrayOfTables) or len(aot) != len(old_list):
             # the tree and the snapshot disagree — fall back to wholesale
-            doc.set_path(dotted, new)
+            defaults = TomlModel._model_defaults(item_model)
+            doc.set_path(dotted, [TomlModel._appendable_element(item, defaults) for item in new])
             return
-        shared = min(len(old_list), len(new))
-        for i in range(shared):
-            TomlModel._apply_diff(doc, old_list[i], new[i], (*full, i), item_model)
-        for _ in range(len(old_list) - len(new)):
-            aot.pop()
-        for i in range(len(old_list), len(new)):
-            aot.append(new[i])
+        defaults = TomlModel._model_defaults(item_model)
+        # match unchanged survivors (new index -> old index) so a removal
+        # deletes the removed block's own lines, not a survivor's
+        match: list[int | None] = [None] * len(new)
+        used: set[int] = set()
+        for j, new_elem in enumerate(new):
+            for i, old_elem in enumerate(old_list):
+                if i not in used and TomlModel._list_match(new_elem, old_elem, defaults):
+                    match[j] = i
+                    used.add(i)
+                    break
+        if used and sorted(used) != [m for m in match if m is not None]:
+            # matched survivors out of order: the list was reordered — replace
+            # wholesale so memory and file stay consistent
+            doc.set_path(dotted, [TomlModel._appendable_element(item, defaults) for item in new])
+            return
+        free_old = iter(i for i in range(len(old_list)) if i not in used)
+        for j in range(len(new)):
+            if match[j] is None:
+                match[j] = next(free_old, None)
+        paired = {m for m in match if m is not None}
+        for j in range(len(new)):
+            i = match[j]
+            if i is not None:
+                # the tree still holds old positions during the edit phase —
+                # address the matched element by its old index
+                TomlModel._apply_diff(doc, old_list[i], new[j], (*full, i), item_model)
+        for i in sorted((i for i in range(len(old_list)) if i not in paired), reverse=True):
+            aot.pop(i)
+        for j in range(len(new)):
+            if match[j] is None:
+                aot.insert(j, TomlModel._appendable_element(new[j], defaults))
+
+    @staticmethod
+    def _list_match(new_elem: Any, old_elem: Any, defaults: dict[str, Any]) -> bool:
+        """Content equality for element alignment (NaN-aware)."""
+        if not isinstance(new_elem, dict) or not isinstance(old_elem, dict):
+            return False
+        for k, ov in old_elem.items():
+            if k not in new_elem or not TomlModel._same_tree(new_elem[k], ov):
+                return False
+        for k, nv in new_elem.items():
+            if k in old_elem:
+                continue
+            if k not in defaults or defaults[k] is _ABSENT or not TomlModel._same_tree(defaults[k], nv):
+                return False
+        return True
+
+    @staticmethod
+    def _appendable_element(element: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
+        """
+        A fresh ``[[block]]`` materializes only what the model carries beyond
+        its defaults: ``None`` optionals and default-equal fields never persist.
+        """
+        out: dict[str, Any] = {}
+        for key, value in element.items():
+            if value is None:
+                continue
+            if key in defaults and defaults[key] is not _ABSENT and TomlModel._same_tree(defaults[key], value):
+                continue
+            out[key] = value
+        return out
 
     @staticmethod
     def _delete_path(doc: Document, path: tuple[str, ...]) -> None:

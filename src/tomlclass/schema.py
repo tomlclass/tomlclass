@@ -1038,6 +1038,51 @@ def _plain_data(value: Any) -> Any:
     return value
 
 
+def _aot_elem_equal(now_elem: Any, was_elem: Any, elem_cls: type[Config]) -> bool:
+    """
+    Content equality for aligning ``list[Config]`` elements: every file
+    present field agrees, and every schema-only field still holds its default.
+    """
+    if not isinstance(now_elem, dict) or not isinstance(was_elem, dict):
+        return False
+    for k, was_raw in was_elem.items():
+        wv = was_raw.value if isinstance(was_raw, enum.Enum) else was_raw
+        nv = now_elem.get(k, _MISSING)
+        if isinstance(nv, enum.Enum):
+            nv = nv.value
+        if nv != wv:
+            return False
+    for k, now_raw in now_elem.items():
+        if k in was_elem:
+            continue
+        nv = now_raw.value if isinstance(now_raw, enum.Enum) else now_raw
+        fspec = elem_cls.__schema_fields__.get(k)
+        if fspec is None or nv != fspec.effective_default():
+            return False
+    return True
+
+
+def _new_element_payload(
+    now_elem: Any, elem_cls: type[Config], dotted: str
+) -> dict[str, Any]:
+    """
+    A fresh ``[[block]]`` materializes only what the instance carries beyond
+    the schema: absent optionals and default-equal fields never persist.
+    """
+    element = dict(now_elem)
+    for fname, fspec in elem_cls.__schema_fields__.items():
+        nv = element.get(fname, _MISSING)
+        if isinstance(nv, enum.Enum):
+            nv = nv.value
+        if nv is None:
+            if not fspec.optional:
+                raise ConfigError(f"cannot assign None to non-optional field {dotted}")
+            element.pop(fname, None)
+        elif nv is not _MISSING and nv == fspec.effective_default():
+            element.pop(fname, None)
+    return element
+
+
 def _diff_config_aot(
     doc: Document,
     fpath: list[str],
@@ -1048,25 +1093,64 @@ def _diff_config_aot(
     """
     Apply per-element, per-field diffs for a ``list[Config]`` field.
 
-    Unchanged element lines are never touched; appended elements go through
-    ``aot.append`` (rendered as fresh ``[[block]]``s); removed elements are
-    dropped via ``ArrayOfTables.pop`` (marks parsed elements dead and keeps
-    the appended/inserted bookkeeping in sync). Falls back to a wholesale
-    assignment when the AoT is absent from the file or the shape is not
-    diffable.
+    Unchanged elements are matched by content so a removal deletes the removed
+    block's own lines (comments included); the remaining elements pair
+    positionally for in-place field edits. Appended elements render as fresh
+    ``[[block]]``s; removed elements are dropped via ``ArrayOfTables.pop``.
+    Falls back to a wholesale assignment when the AoT is absent from the file,
+    the list was reordered, or the shape is not diffable.
     """
     aot = doc.find(".".join(fpath))
     if not isinstance(aot, ArrayOfTables):
-        _doc_assign(doc, fpath, now_list)  # absent from file: create wholesale
+        # absent from file: create wholesale — element payloads filtered the
+        # same way appends are (defaults never persist)
+        _doc_assign(
+            doc,
+            fpath,
+            [
+                _new_element_payload(e, elem_cls, ".".join([*fpath, str(j)]))
+                for j, e in enumerate(now_list)
+            ],
+        )
         return
     was_list = was if isinstance(was, list) else []
 
-    shared = min(len(now_list), len(was_list))
-    for i in range(shared):
+    # match unchanged survivors (new index -> old index)
+    match: list[int | None] = [None] * len(now_list)
+    used: set[int] = set()
+    for j, now_elem in enumerate(now_list):
+        for i, was_elem in enumerate(was_list):
+            if i not in used and _aot_elem_equal(now_elem, was_elem, elem_cls):
+                match[j] = i
+                used.add(i)
+                break
+    if used and sorted(used) != [m for m in match if m is not None]:
+        # matched survivors appear in a different order than the new list —
+        # the sequence was reordered; replacing wholesale keeps memory and
+        # file consistent (AoT reordering is not supported)
+        _doc_assign(
+            doc,
+            fpath,
+            [
+                _new_element_payload(e, elem_cls, ".".join([*fpath, str(j)]))
+                for j, e in enumerate(now_list)
+            ],
+        )
+        return
+    free_old = iter(i for i in range(len(was_list)) if i not in used)
+    for j in range(len(now_list)):
+        if match[j] is None:
+            match[j] = next(free_old, None)
+    paired = {m for m in match if m is not None}
+
+    for j in range(len(now_list)):
+        i = match[j]
+        if i is None:
+            continue  # inserted below
         element = aot[i]
         if not isinstance(element, Table):
             continue
-        now_elem, was_elem = now_list[i], was_list[i]
+        now_elem, was_elem = now_list[j], was_list[i]
         if not isinstance(was_elem, dict):
             continue
         for fname, fspec in elem_cls.__schema_fields__.items():
@@ -1083,19 +1167,22 @@ def _diff_config_aot(
                     continue
                 if not fspec.optional:
                     raise ConfigError(
-                        f"cannot assign None to non-optional field {'.'.join([*fpath, str(i), fname])}"
+                        f"cannot assign None to non-optional field {'.'.join([*fpath, str(j), fname])}"
                     )
                 if fname in element:
                     del element[fname]  # hooked: the line is removed
                 continue
             element[fname] = _plain_data(nv)  # hooked: only this line re-renders
-    # removals first (from the END — popping ascending would shift the
-    # remaining elements and run past the end), then appends. ArrayOfTables.pop
-    # keeps its appended/inserted bookkeeping in sync — never list.pop here.
-    for i in range(len(was_list) - 1, len(now_list) - 1, -1):
+    # deletions: old elements no entry paired with, popped from the END so the
+    # remaining indices stay valid — ArrayOfTables.pop keeps its bookkeeping
+    # in sync, never list.pop here
+    for i in sorted((i for i in range(len(was_list)) if i not in paired), reverse=True):
         aot.pop(i)
-    for i in range(len(was_list), len(now_list)):
-        aot.append(now_list[i])
+    # insertions: filtered payloads, in ascending new position
+    for j in range(len(now_list)):
+        if match[j] is None:
+            dotted = ".".join([*fpath, str(j)])
+            aot.insert(j, _new_element_payload(now_list[j], elem_cls, dotted))
 
 
 def _doc_assign(doc: Document, fpath: list[str], value: Any) -> None:
