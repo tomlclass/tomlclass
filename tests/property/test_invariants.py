@@ -1,11 +1,11 @@
 """
-Property tests for the four invariants (AGENTS.md 6-9), exercised over
-randomly generated documents and random API mutations:
+Property tests for the four invariants (AGENTS.md "Invariants"), exercised
+over randomly generated documents and random API mutations:
 
-6. round-trip axiom      — an unmodified document's dumps() is byte-identical
-7. comment preservation  — comments, ordering and formatting survive edits
-8. defaults never persist— schema defaults merged in memory stay out of the file
-9. CRLF fidelity         — generated lines follow the file's line endings
+1. round-trip axiom      — an unmodified document's dumps() is byte-identical
+2. comment preservation  — comments, ordering and formatting survive edits
+3. defaults never persist— schema defaults merged in memory stay out of the file
+4. CRLF fidelity         — generated lines follow the file's line endings
 """
 
 import string

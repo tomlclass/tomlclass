@@ -4,7 +4,7 @@ What `tomlclass` exports and how the entry points behave. Source of truth: `src/
 
 ## Version
 
-`0.3.0` (`__version__` in `src/tomlclass/__init__.py`, mirrored in `pyproject.toml`). Pre-1.0 policy: minor bumps may add APIs; existing APIs stay backward compatible.
+`0.3.2` (`__version__` in `src/tomlclass/__init__.py`, mirrored in `pyproject.toml`). Pre-1.0 policy: minor bumps may add APIs; existing APIs stay backward compatible.
 
 ## Exports (`__all__`)
 

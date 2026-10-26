@@ -4,7 +4,7 @@
 
 ## 版本
 
-`0.3.0`（`src/tomlclass/__init__.py` 的 `__version__`，与 `pyproject.toml` 镜像）。1.0 前策略：minor 可新增 API；现有 API 保持向后兼容。
+`0.3.2`（`src/tomlclass/__init__.py` 的 `__version__`，与 `pyproject.toml` 镜像）。1.0 前策略：minor 可新增 API；现有 API 保持向后兼容。
 
 ## 导出（`__all__`）
 

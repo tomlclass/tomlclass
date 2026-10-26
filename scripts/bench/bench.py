@@ -8,8 +8,11 @@ Usage:
 import argparse
 import gc
 import sys
+import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
@@ -31,6 +34,147 @@ def bench_parse(label: str, text: str, iterations: int) -> float:
     elapsed = time.perf_counter() - start
     print(f"  tomlclass parse {label:<18} {elapsed:8.2f}s / {iterations} iters")
     return elapsed
+
+
+# -- deterministic edit-path fixtures -----------------------------------------
+
+
+def gen_array_doc(elements: int = 500) -> str:
+    """A table hosting one multiline array with a comment on every element."""
+    lines = ["[weights]", "values = ["]
+    for i in range(elements):
+        comma = "," if i < elements - 1 else ""
+        lines.append(f"    {i * 7 % 997}{comma}  # element {i}")
+    lines.append("]")
+    return "\n".join(lines) + "\n"
+
+
+def gen_aot_doc(blocks: int = 100) -> str:
+    """An array of tables with *blocks* ``[[item]]`` sections."""
+    parts: list[str] = []
+    for i in range(blocks):
+        parts.append("[[item]]")
+        parts.append(f"id = {i}")
+        parts.append(f"name = 'item {i}'")
+        parts.append(f"score = {i}.5")
+        parts.append("")
+    return "\n".join(parts)
+
+
+def _timed(fn: Callable[[], Any], iterations: int) -> float:
+    fn()  # warmup (also fails fast if a workload is miswired)
+    gc.collect()
+    start = time.perf_counter()
+    for _ in range(iterations):
+        fn()
+    return time.perf_counter() - start
+
+
+def _report(name: str, elapsed: float, iterations: int) -> None:
+    per_ms = elapsed / iterations * 1000
+    print(f"  {name:<36} {elapsed:8.3f}s / {iterations} iters  ({per_ms:7.2f} ms/iter)")
+
+
+def run_edit_workloads(iterations: int, tomlkit: Any) -> None:
+    """Parse+edit+dumps cycles: the cost above the parse-only baseline is the edit path."""
+    data2 = (Path(__file__).parent / "data" / "data2.toml").read_text(encoding="utf-8")
+    array_doc = gen_array_doc(500)
+    aot_doc = gen_aot_doc(100)
+
+    def set100() -> None:  # 100 new scalar keys on one existing table
+        doc = tomlclass.parse(data2)
+        table = doc["contain"]
+        for i in range(100):
+            table[f"new-key-{i}"] = i
+        doc.dumps()
+
+    def tables50() -> None:  # 50 new [sub]tables at document root
+        doc = tomlclass.parse(data2)
+        for i in range(50):
+            doc[f"t{i:02d}"] = {"x": i, "y": "value"}
+        doc.dumps()
+
+    def array50() -> None:  # 50 element edits in a 500-element multiline array
+        doc = tomlclass.parse(array_doc)
+        values = doc["weights"]["values"]
+        for i in range(0, 500, 10):
+            values[i] = i * 13
+        doc.dumps()
+
+    def aot50() -> None:  # 50 dict appends onto a 100-block array of tables
+        doc = tomlclass.parse(aot_doc)
+        items = doc["item"]
+        for i in range(50):
+            items.append({"id": 100 + i, "name": f"item {100 + i}", "score": 100.5})
+        doc.dumps()
+
+    def aot_insert25() -> None:  # 25 inserts at the head (anchor scan path)
+        doc = tomlclass.parse(aot_doc)
+        items = doc["item"]
+        for i in range(25):
+            items.insert(0, {"id": -1 - i, "name": "inserted", "score": 0.5})
+        doc.dumps()
+
+    class _AppConfig(tomlclass.Config):
+        ghost: float = 0.5
+        port: int = 8080
+
+    updates = {
+        "contain.new-key-0": 1,
+        "contain.ghost": 0.5,
+        "crime.reject-naughty": 42,
+        "server.host": "localhost",  # missing keys exercise the create path
+        "server.port": 8080,
+    }
+
+    def update_e2e() -> None:  # update(): read + dotted sets + atomic write
+        path.write_bytes(data2.encode("utf-8"))
+        tomlclass.update(path, updates)
+
+    print("== edit-path workloads (each iteration = parse + edit + dumps)")
+
+    def parse_only(text: str) -> Callable[[], Any]:
+        return lambda: tomlclass.parse(text)
+
+    _report("tomlclass parse only (data2)", _timed(parse_only(data2), iterations), iterations)
+    _report("tomlclass parse only (array500)", _timed(parse_only(array_doc), iterations), iterations)
+    _report("tomlclass parse only (aot100)", _timed(parse_only(aot_doc), iterations), iterations)
+    _report("tomlclass set100 + dumps", _timed(set100, iterations), iterations)
+    _report("tomlclass tables50 + dumps", _timed(tables50, iterations), iterations)
+    _report("tomlclass array50edit + dumps", _timed(array50, iterations), iterations)
+    _report("tomlclass aot50append + dumps", _timed(aot50, iterations), iterations)
+    _report("tomlclass aot25insert + dumps", _timed(aot_insert25, iterations), iterations)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "config.toml"
+        _report("tomlclass update() end-to-end", _timed(update_e2e, iterations), iterations)
+
+        def config_cycle() -> None:  # Config.load + mutate + save
+            path.write_bytes(data2.encode("utf-8"))
+            cfg = _AppConfig.load(path)
+            cfg.port = 9090
+            cfg.save(path)
+
+        _report("tomlclass Config load+save", _timed(config_cycle, iterations), iterations)
+
+    if tomlkit is not None:
+        def kset100() -> None:
+            doc = tomlkit.parse(data2)
+            table = doc["contain"]
+            for i in range(100):
+                table[f"new-key-{i}"] = i
+            tomlkit.dumps(doc)
+
+        def ktables50() -> None:
+            doc = tomlkit.parse(data2)
+            for i in range(50):
+                doc[f"t{i:02d}"] = tomlkit.table()
+                doc[f"t{i:02d}"]["x"] = i
+                doc[f"t{i:02d}"]["y"] = "value"
+            tomlkit.dumps(doc)
+
+        _report("tomlkit    set100 + dumps", _timed(kset100, iterations), iterations)
+        _report("tomlkit    tables50 + dumps", _timed(ktables50, iterations), iterations)
 
 
 def main() -> int:
@@ -99,6 +243,8 @@ def main() -> int:
                 tomlkit.dumps(kdoc)
             elapsed = time.perf_counter() - start
             print(f"  tomlkit  dumps(unchanged) {label:<10} {elapsed:8.2f}s")
+
+    run_edit_workloads(args.iterations, tomlkit)
 
     tomli_ratios = [r for name, r in ratios if name == "tomli"]
     if tomli_ratios:

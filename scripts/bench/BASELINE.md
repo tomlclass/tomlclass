@@ -57,6 +57,52 @@
 - Verified continuously by the test suite (CI fetches the pinned toml-test ref; assertions lock
   the manifest counts so coverage can never silently shrink)
 
+## 2026-10-26 re-measurement (post-0.3.2 robustness/performance pass, unreleased)
+
+> Same host and methodology as above (Windows 11 10.0.26300, CPython 3.14.x, tomli 2.5.0,
+> tomlkit 0.15.1, 500 iterations). Run-to-run variance on this host is ±20%; ratios are the
+> point, not absolute seconds. Reproduce:
+> `uv run --with tomli --with tomlkit python scripts/bench/bench.py --compare --iterations 500`
+> The harness now also carries edit-path workloads (`scripts/bench/bench.py`, deterministic
+> in-code fixtures); numbers below are the first recorded baseline for them.
+
+### Parsing
+
+| Library | data0 | data2 | Relative to tomli | Relative to tomlclass |
+|---|---|---|---|---|
+| tomli 2.5.0 | 2.87 s | 0.39 s | 1.00× | 0.78× / 0.82× |
+| **tomlclass** | **3.52 s** | **0.50 s** | **1.22× / 1.28×** | 1.00× |
+| tomlkit 0.15.1 | 25.02 s | 3.41 s | 8.7× / 8.7× | 7.1× / 6.8× |
+
+- The ≤2.00× parse gate is **green** in this measurement (1.22× / 1.28×; worst observed across
+  repeated runs: 1.63×). The 0.3.0 note above (2.98× / 3.30×) reflected a faster tomli
+  denominator on that day; with both measured in one process today the budget holds.
+
+### Rendering (dumps)
+
+| Scenario | tomlclass data0 | tomlclass data2 | tomlkit data0 | tomlkit data2 |
+|---|---|---|---|---|
+| Unedited | 0.68 s | 0.095 s | 1.24 s | 0.20 s |
+| After editing 1 key | 0.68 s | 0.099 s | — | — |
+
+### Edit paths (each iteration = parse + edit + dumps; parse-only column for the delta)
+
+| Workload | parse only | parse + edit + dumps | tomlkit same edit |
+|---|---|---|---|
+| data2, +100 new scalar keys on one table | 1.10 ms | 1.74 ms | 17.44 ms |
+| data2, +50 new sub-tables | 1.10 ms | 2.48 ms | 15.04 ms |
+| 500-element multiline array, 50 element edits | 2.41 ms | 2.51 ms | — |
+| 100 `[[item]]` blocks, 50 dict appends | 3.28 ms | 4.92 ms | — |
+| 100 `[[item]]` blocks, 25 head inserts | 3.28 ms | 4.69 ms | — |
+| `update()` end-to-end (read + dotted sets + atomic write) | — | 4.30 ms | — |
+| `Config.load` + 1 field edit + `save` | — | 5.14 ms | — |
+
+- The renderer's pending-table/pending-aot flush no longer re-joins the whole output per
+  flushed block, the array region rebuild assembles in one pass and skips clean nested
+  arrays, per-block pending entries are an insertion-ordered dict (O(1) re-assignment
+  instead of an O(n) list rebuild), and AoT insert/replace hoists its identity scan —
+  measured 15–30% faster on these workloads versus the pre-pass code on the same host.
+
 ## Maintenance rules
 
 - Budget changes require revising this file with justification (see the parsing note above)

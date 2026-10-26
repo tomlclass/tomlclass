@@ -145,3 +145,11 @@ except tomlclass.TOMLParseError as e:
 ```
 
 `TOMLParseError` 是 `ValueError` 的子类。赋值不可序列化的值（`None`、函数、任意对象）会在赋值时（而非渲染时）抛出 `TOMLTypeError`（`TypeError` 的子类）。
+
+## 限制
+
+嵌套深度在 API 两侧一致受限：表（header 路径、点号键）与值（数组、内联表）超过 **200 层**即被拒绝——解析期抛 `TOMLParseError`，赋值期（`doc["k"] = ...`、`dumps(mapping)`）抛 `TOMLTypeError`。公共 API 不会泄漏裸 `RecursionError`。
+
+## 并发
+
+`Document` / `Table` / `Array` 与 `Config` 实例在并发修改下**不是线程安全的**：编辑记账（span、pending 条目）会互相竞争。对不同源的并行解析相互独立、可以并发执行；跨线程共享文档请保持只读，或在外部同步修改操作。`atomic_write_text`（同目录临时文件 + `os.replace`）保证每次保存对单个文件是原子的，但两个线程保存同一路径仍可能交错——请协调写入方。`Config.i18n_resolver` 是进程级类属性：更换它会立即影响进程内所有 `Config.load` 与模板生成调用。

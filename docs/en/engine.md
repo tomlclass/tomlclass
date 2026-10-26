@@ -153,3 +153,11 @@ except tomlclass.TOMLParseError as e:
 ```
 
 `TOMLParseError` is a `ValueError` subclass. Assigning non-serializable values (`None`, functions, arbitrary objects) raises `TOMLTypeError` (a `TypeError` subclass) at assignment time, not at render time.
+
+## Limits
+
+Nesting is bounded identically on both sides of the API: tables (header paths, dotted keys) and values (arrays, inline tables) deeper than **200 levels** are rejected — at parse time with `TOMLParseError`, at assignment time (`doc["k"] = ...`, `dumps(mapping)`) with `TOMLTypeError`. A raw `RecursionError` never escapes the public API.
+
+## Concurrency
+
+`Document` / `Table` / `Array` and `Config` instances are **not thread-safe** under concurrent mutation: the edit bookkeeping (spans, pending entries) would race. Parsing separate sources is independent and safe to run in parallel; share a document across threads read-only, or synchronize mutation externally. `atomic_write_text` (same-directory tempfile + `os.replace`) makes each save atomic per file, but two threads saving the same path can interleave — coordinate writers. `Config.i18n_resolver` is a process-wide class attribute: swapping it affects every `Config.load` and template call in the process.
