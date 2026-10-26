@@ -23,6 +23,10 @@ from pathlib import Path
 from typing import Any
 
 from ._document import Document
+
+# wire the engine hooks now that nodes and engine_set are both loaded —
+# Table.__setitem__/__delitem__ would otherwise pay an import lookup per call
+from .engine_set import engine_del, engine_set
 from .errors import (
     ConfigError,
     FieldError,
@@ -34,6 +38,11 @@ from .errors import (
 from .nodes import Array, ArrayOfTables, InlineTable, Table
 from .parser import parse_source
 from .schema import Config, Field
+
+# staticmethod wrapper: a bare function would bind as a method and double-
+# pass the table instance
+Table._ENGINE_SET = staticmethod(engine_set)
+Table._ENGINE_DEL = staticmethod(engine_del)
 
 __version__ = "0.3.2"
 
@@ -94,13 +103,15 @@ def _strings_to_none(obj: Any, sentinel: str) -> Any:
     return obj
 
 
-def _none_to_strings(obj: Any, sentinel: str) -> Any:
+def _none_to_strings(obj: Any, sentinel: str, _depth: int = 0) -> Any:
+    if _depth >= 200:
+        raise TOMLTypeError("maximum value nesting depth exceeded (200)", value=obj)
     if obj is None:
         return sentinel
     if isinstance(obj, dict):
-        return {k: _none_to_strings(v, sentinel) for k, v in obj.items()}
+        return {k: _none_to_strings(v, sentinel, _depth + 1) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return [_none_to_strings(v, sentinel) for v in obj]
+        return [_none_to_strings(v, sentinel, _depth + 1) for v in obj]
     return obj
 
 

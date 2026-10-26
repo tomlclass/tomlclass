@@ -58,7 +58,20 @@ def _std_datetime(value: Any) -> Any:
         if isinstance(value, dt.time):
             return dt.time.fromisoformat(raw)
     except ValueError:
-        return value
+        # spellings fromisoformat rejects — leap seconds (23:59:60, held as
+        # :59 on the node) and, on Python 3.10, fraction widths other than
+        # 3/6 digits or lowercase separators — rebuild the standard-library
+        # equivalent from the node's own fields instead of leaking the
+        # private subclass
+        if isinstance(value, dt.datetime):
+            return dt.datetime(
+                value.year, value.month, value.day, value.hour, value.minute,
+                value.second, value.microsecond, value.tzinfo,
+            )
+        if isinstance(value, dt.date):
+            return dt.date(value.year, value.month, value.day)
+        if isinstance(value, dt.time):
+            return dt.time(value.hour, value.minute, value.second, value.microsecond, value.tzinfo)
     return value
 
 

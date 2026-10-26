@@ -297,6 +297,7 @@ class Parser:
                 # implicit tables record their path: pending_tables hosted
                 # on them need the full prefix when rendered
                 fresh._header_keys = walked
+                fresh._depth = current._depth + 1
                 current._raw_set(part, fresh)
                 current = fresh
                 continue
@@ -332,14 +333,22 @@ class Parser:
                 aot._header_keys = tuple(keys)
             else:
                 raise ValueError(f"cannot redefine {name!r} as an array of tables")
+            # element depth: parent -> aot -> element
+            element_depth = parent._depth + 2
+            if element_depth > 200:
+                raise ValueError("maximum table nesting depth exceeded (200)")
             table = Table(span=span, kind="aot")
             table.defined = True
             table._header_keys = tuple(keys)
+            table._depth = element_depth
             table._aot = aot
             aot.append_table(table)
             self.cur = table
             return table, aot
 
+        table_depth = parent._depth + 1
+        if table_depth > 200:
+            raise ValueError("maximum table nesting depth exceeded (200)")
         if existing is None:
             table = Table(span=span, kind="header")
             parent._raw_set(name, table)
@@ -351,6 +360,7 @@ class Parser:
             raise ValueError(f"table {name!r} already defined")
         table.defined = True
         table._header_keys = tuple(keys)
+        table._depth = table_depth
         self.cur = table
         return table, None
     # key = value                                                        #
@@ -417,6 +427,9 @@ class Parser:
             fresh.sealed = True
             fresh._block = self.cur
             fresh._phys = phys
+            fresh._depth = table._depth + 1
+            if fresh._depth > 200:
+                raise ValueError("maximum table nesting depth exceeded (200)")
             table._raw_set(part, fresh)
             table = fresh
             self._last_sealed = fresh

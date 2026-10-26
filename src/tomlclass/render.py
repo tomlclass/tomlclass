@@ -53,16 +53,33 @@ def render_document(source: str, parts: list[tuple[int, int, str, Any]], root: T
             anchors.setdefault(index + 1, []).append(("table_scalars", block))
         else:
             anchors.setdefault(index + 1, []).append(("table", block))
-    # an aot with runtime-added elements anchors after its last element's
-    # last kv line — NOT after the [[header]], where the new element would
-    # land before the last element's own entries
-    aot_tails: dict[int, tuple[int, Any]] = {}
+    # an aot with runtime-added elements anchors after its last parsed
+    # element's LAST part — sub-table headers ([products.sub] sections)
+    # included: a new block before them would re-attach to the appended
+    # element on reparse
+    aot_tail_blocks: dict[int, Table] = {}
     for index in last_kv.values():
         block = part_tables[index]
         if block._aot is not None:
-            aot_tails[id(block._aot)] = (index + 1, block._aot)
-    for idx, aot in aot_tails.values():
-        anchors.setdefault(idx, []).append(("aot", aot))
+            aot_tail_blocks[id(block._aot)] = block
+    for aid, element in aot_tail_blocks.items():
+        aot = element._aot
+        if aot is None:  # only aot-kind element tables reach this map
+            continue
+        subtree = {id(t) for t in _walk_tables(element)}
+        last_part = aot_last[aid]
+        index = last_part + 1
+        while index < len(parts):
+            table = part_tables.get(index)
+            if table is None:
+                index += 1  # trivia inside the element's sections
+                continue
+            if id(table) in subtree:
+                last_part = index
+                index += 1
+                continue
+            break  # the parts left the last element's scope
+        anchors.setdefault(last_part + 1, []).append(("aot", aot))
     # aot elements inserted before a parsed element anchor to that element's
     # [[header]] part — the new block renders right before it (header parts
     # always follow a trivia part, so they never collide with the anchors above).
@@ -190,6 +207,14 @@ def render_document(source: str, parts: list[tuple[int, int, str, Any]], root: T
                 out.append(source[s:e])
         elif kind == "header":
             table, aot = payload
+            # root-level pending scalars with no root kv anchor must render
+            # BEFORE the first header — appended after it they would silently
+            # become entries of the enclosing table. The check runs before
+            # the dead branch: with the leading headers dead there is no
+            # later safe position, and EOF would land inside the last
+            # surviving block's scope.
+            if id(root) not in last_kv and id(root) not in scalar_flushed and root.pending:
+                _flush(out, root, flushed, scalar_flushed=scalar_flushed, scalars_only=True, nl=nl)
             if table.dead:
                 suppress_trivia = True
                 # whole replacement: render all new elements at the last (dead) element position
@@ -207,11 +232,6 @@ def render_document(source: str, parts: list[tuple[int, int, str, Any]], root: T
                         if kind_ == "aot_ins":
                             _flush_aot_inserted(out, obj[0], obj[1], nl)
                 continue
-            # root-level pending scalars with no root kv anchor must render
-            # BEFORE the first header — appended after it they would silently
-            # become entries of the enclosing table
-            if id(root) not in last_kv and id(root) not in scalar_flushed and root.pending:
-                _flush(out, root, flushed, scalar_flushed=scalar_flushed, scalars_only=True, nl=nl)
             suppress_trivia = False
             for kind_, obj in anchors.get(index, ()):
                 if kind_ == "aot_ins":
@@ -291,12 +311,13 @@ def _flush(
         if scalar_flushed is None or id(block) in scalar_flushed:
             return
         scalar_flushed.add(id(block))
-        for path, value in block.pending:
+        for path, value in block.pending.items():
             full = (block._phys if top else ()) + path
             key = ".".join(format_key(k) for k in full)
             ctext = block._comments.get(full)
             suffix = f"  {ctext}" if ctext else ""
             out.append(f"{key} = {format_value(value)}{suffix}" + nl)
+            _settle_inline_aot(value)
         out.extend(line + nl for line in block.pending_trivia)
         return
     flushed.add(id(block))
@@ -315,7 +336,7 @@ def _flush(
     # anchor (aot_tails) or the _visit fallback — never here, where the
     # position would be that of an arbitrary element table.
     if scalar_flushed is None or id(block) not in scalar_flushed:
-        for path, value in block.pending:
+        for path, value in block.pending.items():
             # implicit super-table entries render plain under their own
             # freshly emitted [header]
             prefix = block._phys or () if top else ()
@@ -324,6 +345,7 @@ def _flush(
             ctext = block._comments.get(full)
             suffix = f"  {ctext}" if ctext else ""
             out.append(f"{key} = {format_value(value)}{suffix}" + nl)
+            _settle_inline_aot(value)
         out.extend(line + nl for line in block.pending_trivia)
     for path, subtable in block.pending_tables:
         if subtable.dead:
@@ -331,23 +353,32 @@ def _flush(
         # pending sub-tables carry the host path prefix ([tool.mytool], not [mytool])
         full = (parent_path if not top else ()) + tuple(block._header_keys) + path
         header = "[" + ".".join(format_key(k) for k in full) + "]" + nl
-        if "".join(out).strip():
+        # separator test without materializing the whole output (short-circuits
+        # on the first content line)
+        if any(part.strip() for part in out):
             out.append(nl)
         out.append(header)
         _flush(out, subtable, flushed, parent_path=full, top=False, scalar_flushed=scalar_flushed, nl=nl)
     for path, aot in block.pending_aots:
         # a constructed aot assigned to a fresh key: its elements render as
-        # [[blocks]] at the block tail; the registration is never cleared so
-        # later appends re-render with it (dumps stays idempotent)
+        # [[blocks]] at the block tail; the registration is dropped on
+        # delete/replace (engine_del/engine_set), never cleared here — later
+        # appends re-render with it (dumps stays idempotent)
         full = (parent_path if not top else ()) + tuple(block._header_keys) + path
         base_header = "[[" + ".".join(format_key(k) for k in full) + "]]"
         for element in aot:
-            if "".join(out).strip():
+            if element.dead:
+                continue
+            if any(part.strip() for part in out):
                 out.append(nl)
             ctext = element._comments.get(())
             out.append(base_header + (f"  {ctext}" if ctext else "") + nl)
             for key, value in element.items():
                 out.append(f"{format_key(key)} = {format_value(value)}" + nl)
+            # element edits registered as pending would flush a second copy
+            # at _visit — they are part of this block now
+            element.pending.clear()
+            element.pending_tables.clear()
 
 
 def _flush_aot_appended(out: list[str], aot: Any, nl: str, flushed: set[int]) -> None:
@@ -388,6 +419,18 @@ def _emit_aot_blocks(out: list[str], aot: Any, ids: set[int], nl: str) -> None:
             element.pending_tables.clear()
 
 
+def _settle_inline_aot(value: Any) -> None:
+    """
+    An aot stored as a plain value renders inline; element edits already fold
+    into that text — their pending registrations must not flush a second,
+    stray line at ``_visit`` time.
+    """
+    if isinstance(value, ArrayOfTables):
+        for element in value:
+            element.pending.clear()
+            element.pending_tables.clear()
+
+
 def _render_array_edits(source: str, vs: int, ve: int, dirty_value: Any) -> str | None:
     """
     Render the value text ``source[vs:ve]`` for an array whose *elements* were
@@ -419,15 +462,24 @@ def _build_region(source: str, a: Any) -> str | None:
             ops.append((sp[0], sp[1], format_value(a[i])))
         # span-None entries are appended elements: re-attached below
     for v in a:
-        if isinstance(v, Array):
+        # only children with their own edits need rebuilding; a clean child's
+        # region would be the identity op on its span
+        if isinstance(v, Array) and (v.dirty or v._dirty_indices != set() or v._appended):
             child = _build_region(source, v)
             if child is None:
                 return None
             ops.append((v.span[0], v.span[1], child))
-    ops.sort(key=lambda t: -t[0])
-    region = source[a.span[0] : a.span[1]]
+    ops.sort()
+    # single-pass assembly: one slice per gap instead of a full region copy
+    # per op — the ops are disjoint spans inside [a.span[0], a.span[1])
+    parts: list[str] = []
+    pos = a.span[0]
     for o0, o1, rep in ops:
-        region = region[: o0 - a.span[0]] + rep + region[o1 - a.span[0] :]
+        parts.append(source[pos:o0])
+        parts.append(rep)
+        pos = o1
+    parts.append(source[pos : a.span[1]])
+    region = "".join(parts)
     appended_indices = [i for i, sp in enumerate(a.spans) if sp is None]
     tail = [format_value(a[i]) for i in range(len(a.spans), len(a))]
     if appended_indices or tail:

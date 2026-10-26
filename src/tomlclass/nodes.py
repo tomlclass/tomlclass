@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import MutableMapping
-from typing import Any, SupportsIndex
+from typing import Any, ClassVar, SupportsIndex
 
 from .errors import TOMLTypeError
 
@@ -33,6 +33,10 @@ __all__ = [
 ]
 
 _BARE_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+
+# API-supplied values are depth-capped like parsed values (parser limit: 200);
+# a raw RecursionError must never escape the public API
+_MAX_VALUE_DEPTH = 200
 
 
 class Trivia(str):
@@ -116,6 +120,7 @@ class Table(dict):  # type: ignore[type-arg]
         "_aot",
         "_block",
         "_comments",
+        "_depth",
         "_header_comment_span",
         "_header_keys",
         "_phys",
@@ -146,12 +151,16 @@ class Table(dict):  # type: ignore[type-arg]
         self._anchor: int | None = None    # part index after which this dotted table's entries render
         self._block: Table | None = None   # physical block hosting entries (dotted tables only)
         self._phys: tuple[str, ...] = ()   # dotted path relative to the physical block
+        self._depth = 0                    # nesting depth from the root (parser-maintained)
         self._header_keys: tuple[str, ...] = ()
         self._aot: ArrayOfTables | None = None
         self._header_comment_span: tuple[int, int] | None = None  # "# ..." span on the header line, if any
         # phys path -> comment override (string-keyed view: .comments)
         self._comments: dict[tuple[str, ...], str | None] = {}
-        self.pending: list[tuple[tuple[str, ...], Any]] = []     # (phys path, value) added via API
+        # phys path -> value, added via the API; insertion-ordered so the
+        # render order matches assignment order, re-set moves an entry to the
+        # tail (list-era filter+append semantics) — O(1) instead of O(pending)
+        self.pending: dict[tuple[str, ...], Any] = {}
         self.pending_tables: list[tuple[tuple[str, ...], Table]] = []  # (phys path, sub-table)
         self.pending_aots: list[tuple[tuple[str, ...], ArrayOfTables]] = []  # (phys path, constructed aot)
         self.pending_trivia: list[str] = []                      # standalone comment/blank lines (pre-rendered)
@@ -179,16 +188,24 @@ class Table(dict):  # type: ignore[type-arg]
 
     # -- user-facing mapping (records edits for the renderer) ------------- #
 
-    def __setitem__(self, key: str, value: Any) -> None:
-        from .engine_set import engine_set
+    # engine hooks, injected by the package __init__ after both modules load
+    # (nodes and engine_set import each other's names); the inline import is
+    # the bootstrap fallback so the classes stay usable mid-initialization
+    _ENGINE_SET: ClassVar[Any] = None
+    _ENGINE_DEL: ClassVar[Any] = None
 
-        stored = engine_set(self, (key,), value)
+    def __setitem__(self, key: str, value: Any) -> None:
+        hook = self._ENGINE_SET
+        if hook is None:
+            from .engine_set import engine_set as hook
+        stored = hook(self, (key,), value)
         dict.__setitem__(self, key, stored)
 
     def __delitem__(self, key: str) -> None:
-        from .engine_set import engine_del
-
-        engine_del(self, (key,))
+        hook = self._ENGINE_DEL
+        if hook is None:
+            from .engine_set import engine_del as hook
+        hook(self, (key,))
         dict.__delitem__(self, key)
 
     # -- hooked mapping surface ------------------------------------------- #
@@ -258,7 +275,11 @@ class Table(dict):  # type: ignore[type-arg]
         """
         self.dead = True
         for value in self.values():
-            if isinstance(value, Table):
+            if isinstance(value, ArrayOfTables):
+                for element in value:
+                    if isinstance(element, Table):
+                        element.mark_dead()
+            elif isinstance(value, Table):
                 value.mark_dead()
 
 
@@ -381,8 +402,13 @@ class Array(list):  # type: ignore[type-arg]
         self._touch()
         if isinstance(index, slice):
             self._touch_whole()
-            self.spans[index] = [None] * len(list(value))
-            list.__setitem__(self, index, value)
+            # materialize once: measuring len(list(value)) alone would exhaust
+            # an iterator RHS before list.__setitem__ consumes it
+            items = list(value)
+            # assign the list first: an extended slice validates its length
+            # here, before any span bookkeeping mutates
+            list.__setitem__(self, index, items)
+            self.spans[index] = [None] * len(items)
             return
         if self._dirty_indices is None:
             list.__setitem__(self, index, value)
@@ -481,12 +507,6 @@ class ArrayOfTables(Array):
         list.append(self, element)
         self._appended_elements.append(element)
 
-    def _is_added(self, element: Table) -> bool:
-        for appended in self._appended_elements:
-            if appended is element:
-                return True
-        return any(el is element for _anchor, el in self._inserted_elements)
-
     def insert(self, index: SupportsIndex, object: Any) -> None:
         if isinstance(object, Table) and self._in_array(object):
             # mirror of append(): an aliased element would render twice
@@ -502,11 +522,14 @@ class ArrayOfTables(Array):
             i += n
         i = min(max(i, 0), n)
         # the block renders before the first parsed element at or after the
-        # insertion point (appended elements are skipped — they all live at
-        # the tail); None anchors to the tail
+        # insertion point (appended elements are skipped — they all live at the
+        # tail); None anchors to the tail. The added-ids set is built once per
+        # call, not per candidate.
+        added_ids = {id(el) for el in self._appended_elements}
+        added_ids.update(id(el) for _anchor, el in self._inserted_elements)
         anchor: Table | None = None
         for j in range(i, n):
-            if not self._is_added(self[j]):
+            if id(self[j]) not in added_ids:
                 anchor = self[j]
                 break
         list.insert(self, i, element)
@@ -536,8 +559,10 @@ class ArrayOfTables(Array):
         # same position — before the next parsed element, or at the tail
         old.mark_dead()
         anchor = None
+        added_ids = {id(el) for el in self._appended_elements}
+        added_ids.update(id(el) for _anchor, el in self._inserted_elements)
         for j in range(i + 1, len(self)):
-            if not self._is_added(self[j]):
+            if id(self[j]) not in added_ids:
                 anchor = self[j]
                 break
         list.__setitem__(self, i, element)
@@ -634,10 +659,18 @@ def format_key(key: str) -> str:
     return '"' + _escape_basic(key) + '"'
 
 
-def render_inline(value: Any) -> str:
+def render_inline(value: Any, _depth: int = 0) -> str:
     """
     Canonical inline rendering for any TOML value.
+
+    :raises TOMLTypeError: values nested deeper than 200 containers
     """
+    if _depth >= _MAX_VALUE_DEPTH:
+        raise TOMLTypeError(
+            f"maximum value nesting depth exceeded ({_MAX_VALUE_DEPTH}) —"
+            " build the structure as [tables] instead",
+            value=value,
+        )
     if value is None:
         raise TOMLTypeError(
             "None cannot be represented in TOML — pass none_value='null' to dumps()/loads()/update(),"
@@ -648,10 +681,10 @@ def render_inline(value: Any) -> str:
     if isinstance(value, str):
         return '"' + _escape_basic(value) + '"'
     if isinstance(value, Table):
-        body = ", ".join(f"{format_key(k)} = {render_inline(value[k])}" for k in value)
+        body = ", ".join(f"{format_key(k)} = {render_inline(value[k], _depth + 1)}" for k in value)
         return "{" + (f" {body} " if body else "") + "}"
     if isinstance(value, Array):
-        return "[" + ", ".join(render_inline(v) for v in value) + "]"
+        return "[" + ", ".join(render_inline(v, _depth + 1) for v in value) + "]"
     if isinstance(value, float):
         if math.isnan(value):
             return "nan"
@@ -665,9 +698,9 @@ def render_inline(value: Any) -> str:
     if hasattr(value, "isoformat"):  # plain datetime/date/time from user code
         return value.isoformat()
     if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(render_inline(v) for v in value) + "]"
+        return "[" + ", ".join(render_inline(v, _depth + 1) for v in value) + "]"
     if isinstance(value, dict):
-        body = ", ".join(f"{format_key(str(k))} = {render_inline(value[k])}" for k in value)
+        body = ", ".join(f"{format_key(str(k))} = {render_inline(value[k], _depth + 1)}" for k in value)
         return "{" + (f" {body} " if body else "") + "}"
     raise TOMLTypeError(f"cannot serialize {type(value).__name__} as TOML", value=value)
 
