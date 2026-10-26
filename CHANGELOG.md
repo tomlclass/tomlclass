@@ -75,6 +75,30 @@ The log records the **net difference between release states**, not the developme
 
 ---
 
+## [0.4.0] - 2026/10/26
+> Released
+
+**Summary**
+Consistency release opening the 0.4 series: memory and file can no longer disagree after emptying containers, and order-preserving array edits keep per-element comments and layout — closing the two known gaps in the preservation model. This release also carries everything in 0.3.3; the 0.3.x series is closed.
+
+**Upgrade notes**
+- Recommended.
+- `to_dict()` now mirrors the file for emptied containers: an array-of-tables cleared to zero elements and a dotted-key table whose entries are all deleted vanish from `to_dict()` output (previously stayed as empty containers). Code comparing `to_dict()` against a re-parsed document is affected — those now agree.
+- Array structural edits (`pop` / `insert` / `extend` / `del` / `*=` / slice assignment) keep the surviving elements' comments and layout instead of re-rendering the array canonically; `sort` / `reverse` still render canonically (element sources are positional).
+
+### Fixed
+
+- @wsu2059q
+  - `engine`: order-preserving structural edits on arrays keep the surviving elements' source layout and trailing comments — the parser records a suffix span (separator, trailing comment, line layout) per element and the region rebuild splices survivors from their source slices; previously any structural mutation re-rendered the array canonically, dropping every element comment
+
+### Changed
+
+- @wsu2059q
+  - `engine`: emptied containers agree between `to_dict()` and the rendered file — a cleared array-of-tables and a fully deleted dotted-key table disappear from `to_dict()` output, restoring `doc.to_dict() == parse(doc.dumps()).to_dict()` on those paths; a declared `[table]` header emptied by deletions stays present on both sides
+  - `docs`: the engine guide documents array structural-edit behavior, the reference sheets record the strengthened comment-preservation invariant, and README performance claims reflect the current same-process baseline (parse 1.2–1.6× tomli, edit paths 6–10× faster than tomlkit)
+
+---
+
 ## [0.3.2] - 2026/10/15
 > Released
 
