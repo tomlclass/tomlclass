@@ -59,6 +59,8 @@ Nothing reaches the file until `dumps()` / `save()` — the mutations below live
 | `set_path` / `update` through an `[[aot]]` segment | writes **every** element | write a single element via `doc["it"][i]` |
 | `aot[i] = {...}` | the replaced element renders as a fresh canonical block — its per-line comments and original formatting are gone | edit fields in place (`aot[i]["n"] = ...`) |
 | `doc[key] = [...]` AoT replace | all element blocks re-render canonically; original per-element comments are gone | edit elements in place |
+| array `pop` / `insert` / `extend` / `del` / `*=` | the array region rebuilds from the surviving elements' source slices — per-element comments and layout survive; newly inserted elements render canonically | assign the array wholesale to re-render canonically |
+| array `sort` / `reverse` | the array re-renders canonically (element sources are positional) | — |
 | AoT `append` / `insert` / `extend` | a fresh `[[block]]` section is added (the document structure grows) | `pop()` the element |
 | dotted-key tables | sealed: new keys render as dotted lines anchored to the table's last physical line | — |
 | inline tables | closed: adding keys raises; reassign the whole value | — |

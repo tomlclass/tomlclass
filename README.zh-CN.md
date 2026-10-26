@@ -35,7 +35,7 @@ TOML 1.0/1.1 解析库：无损编辑 + 类型化配置。
 - **注释访问** —— 按键读取、替换、删除注释；可选注入 schema 描述
 - **tomllib 兼容入口** —— `loads` / `load` 遵循标准库调用约定
 
-**不适合** 只需把 TOML 读成字典、追求极致速度的场景——那请用标准库 [tomllib](https://docs.python.org/3/library/tomllib.html) 或 [tomli](https://github.com/hukkin/tomli)。tomlclass 以解析余量换取可编辑性与 schema 工具（仓库内实测约为 tomli 2.5 的 3 倍）。反过来，如果你既要 schema 校验、又要注释在写回后存活——目前没有别的库两者兼得。
+**不适合** 只需把 TOML 读成字典、追求极致速度的场景——那请用标准库 [tomllib](https://docs.python.org/3/library/tomllib.html) 或 [tomli](https://github.com/hukkin/tomli)。tomlclass 以解析余量换取可编辑性与 schema 工具（仓库内同进程实测约为 tomli 2.5 的 1.2–1.6 倍）。反过来，如果你既要 schema 校验、又要注释在写回后存活——目前没有别的库两者兼得。
 
 ## 合规与性能
 
@@ -56,6 +56,8 @@ TOML 1.0/1.1 解析库：无损编辑 + 类型化配置。
 | tomlclass 0.2.1 | 4.26s / 3.80s | 3.12s / 2.22s |
 | qtoml 0.3 | 7.78s / 2.97s | 6.35s / 1.97s |
 | tomlkit 0.15 | 60.45s / 1.75s | 36.88s / 0.81s |
+
+[仓库内基准](scripts/bench/BASELINE.md)（同进程对照，2026-10 重测）目前解析为 tomli 2.5 的 1.2–1.6 倍——在 ≤2× 预算内——并新增了编辑路径工作负载：解析 + 编辑 + dumps 循环在相同编辑上比 tomlkit 快 6–10×，编辑成本随编辑量而非文档长度伸缩。
 
 ## 安装
 

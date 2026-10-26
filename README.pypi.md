@@ -54,7 +54,7 @@ Speed measured with [toml-bench](https://github.com/pwwang/toml-bench) (toml-tes
 | qtoml 0.3 | 7.78s / 2.97s | 6.35s / 1.97s |
 | tomlkit 0.15 | 60.45s / 1.75s | 36.88s / 0.81s |
 
-Lossless editing pays for bookkeeping: loads run ~2.5–2.8× tomli, dumps ~2.6–3.2× tomli_w — and 12–14× faster than tomlkit. 0.3.0 adds no parse regression (±4% vs 0.1.0 on the in-repo baseline).
+Lossless editing pays for bookkeeping: on the toml-bench harness above, loads run ~2.8× tomli; the current same-process in-repo baseline (2026-10) reads parsing at 1.2–1.6× tomli — inside its ≤2× budget — with parse + edit + dumps cycles 6–10× faster than tomlkit on the same edits, and edit cost scaling with edit size, not document length.
 
 ## Installation
 

@@ -5,7 +5,7 @@ The four must-never-break guarantees. Property-tested in `tests/property/test_in
 | # | Invariant | Statement | Enforced by |
 |---|---|---|---|
 | 1 | **Round-trip axiom** | An unmodified document's `dumps()` is byte-identical to its source. Any change that alters untouched output is a defect. | `tests/unit/test_roundtrip.py`, property tests, toml-test valid files (byte-exact) |
-| 2 | **Comment preservation** | Comments, key ordering and formatting survive every read-edit-save cycle. Array splices keep per-element comments; AoT and table edits keep section comments. | property tests, `test_edit.py`, `test_compat.py` (comment API), toml-test round-trips |
+| 2 | **Comment preservation** | Comments, key ordering and formatting survive every read-edit-save cycle. Array element edits and order-preserving structural edits (`pop`/`insert`/`extend`/…) keep per-element comments; AoT and table edits keep section comments. `sort`/`reverse` re-render canonically (element sources are positional). | property tests, `test_edit.py`, `test_compat.py` (comment API), `test_array_structure_preservation.py`, toml-test round-trips |
 | 3 | **Defaults never persist** | Schema defaults merged in memory are never written to the file — including fields absent from the file and elements inside `[[aot]]` arrays. | property tests (defaults case), `test_schema.py`, `test_pydantic.py` |
 | 4 | **CRLF fidelity** | Files are read without universal-newline translation; generated lines follow the file's line endings; CR inside assigned string values is escaped, not written raw. | property tests (CRLF case), `test_regressions_021c.py` fixtures (`write_bytes`/`newline=""`) |
 

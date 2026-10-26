@@ -35,7 +35,7 @@ The configuration semantics come from the [ErisPulse](https://github.com/ErisPul
 - **TOML 1.1 semantics, selectable** — 1.1 rules on by default; `toml_version="1.0"` restores strict 1.0 rejection where your code depends on it
 - **tomllib-compatible entry points** — `loads` / `load` follow the stdlib calling convention; `dump` / `load_path` and a from-scratch builder (`document()` / `table()` / `aot()`) complete the surface
 
-**Not a fit** if you only need to read TOML into plain dicts at maximum speed — use [tomllib](https://docs.python.org/3/library/tomllib.html) (stdlib) or [tomli](https://github.com/hukkin/tomli) for that. tomlclass trades parse headroom (≈3× tomli 2.5 in the in-repo measurement) for editability and schema tooling. Conversely, if you need schema validation **and** comments that survive write-back, this is currently the only library that does both.
+**Not a fit** if you only need to read TOML into plain dicts at maximum speed — use [tomllib](https://docs.python.org/3/library/tomllib.html) (stdlib) or [tomli](https://github.com/hukkin/tomli) for that. tomlclass trades parse headroom (≈1.2–1.6× tomli 2.5 in the current same-process [in-repo measurement](scripts/bench/BASELINE.md)) for editability and schema tooling. Conversely, if you need schema validation **and** comments that survive write-back, this is currently the only library that does both.
 
 ## Conformance & performance
 
@@ -56,6 +56,8 @@ Speed measured with [toml-bench](https://github.com/pwwang/toml-bench) (load / d
 | tomlclass 0.2.1 | 4.26s / 3.80s | 3.12s / 2.22s |
 | qtoml 0.3 | 7.78s / 2.97s | 6.35s / 1.97s |
 | tomlkit 0.15 | 60.45s / 1.75s | 36.88s / 0.81s |
+
+The [in-repo benchmark](scripts/bench/BASELINE.md) (same-process comparison, re-measured 2026-10) reads parsing at 1.2–1.6× tomli 2.5 — inside the ≤2× budget — and adds edit-path workloads: parse + edit + dumps cycles run 6–10× faster than tomlkit on the same edits, and edit cost scales with edit size, not document length.
 
 ## Installation
 
@@ -100,7 +102,7 @@ text = doc.dumps()                                   # only touched lines change
 
 ```python
 tomlclass.update("pyproject.toml", {"project.version": "1.0.0", "tool.x.y": True})
-````
+```
 
 ## Documentation
 
