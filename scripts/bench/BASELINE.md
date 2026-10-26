@@ -89,19 +89,22 @@
 
 | Workload | parse only | parse + edit + dumps | tomlkit same edit |
 |---|---|---|---|
-| data2, +100 new scalar keys on one table | 1.10 ms | 1.74 ms | 17.44 ms |
-| data2, +50 new sub-tables | 1.10 ms | 2.48 ms | 15.04 ms |
-| 500-element multiline array, 50 element edits | 2.41 ms | 2.51 ms | — |
-| 100 `[[item]]` blocks, 50 dict appends | 3.28 ms | 4.92 ms | — |
-| 100 `[[item]]` blocks, 25 head inserts | 3.28 ms | 4.69 ms | — |
-| `update()` end-to-end (read + dotted sets + atomic write) | — | 4.30 ms | — |
-| `Config.load` + 1 field edit + `save` | — | 5.14 ms | — |
+| data2, +100 new scalar keys on one table | 0.80 ms | 1.37 ms | 11.01 ms |
+| data2, +50 new sub-tables | 0.80 ms | 1.94 ms | 9.19 ms |
+| 500-element multiline array, 50 element edits | 1.89 ms | 2.04 ms | — |
+| 100 `[[item]]` blocks, 50 dict appends | 2.33 ms | 3.54 ms | — |
+| 100 `[[item]]` blocks, 25 head inserts | 2.33 ms | 3.63 ms | — |
+| `update()` end-to-end (read + dotted sets + atomic write) | — | 4.51 ms | — |
+| `Config.load` + 1 field edit + `save` | — | 4.11 ms | — |
 
 - The renderer's pending-table/pending-aot flush no longer re-joins the whole output per
-  flushed block, the array region rebuild assembles in one pass and skips clean nested
-  arrays, per-block pending entries are an insertion-ordered dict (O(1) re-assignment
-  instead of an O(n) list rebuild), and AoT insert/replace hoists its identity scan —
-  measured 15–30% faster on these workloads versus the pre-pass code on the same host.
+  flushed block, the array region rebuild assembles in one pass (order-preserving
+  structural edits — `pop`/`insert`/`extend`/`*=` — rebuild from surviving elements'
+  source slices, keeping per-element comments), per-block pending entries are an
+  insertion-ordered dict (O(1) re-assignment instead of an O(n) list rebuild), and AoT
+  insert/replace hoists its identity scan — measured 15–30% faster on these workloads
+  versus the pre-pass code on the same host. Run-to-run variance is ±20%; the ratios to
+  parse-only and to tomlkit are the stable signal.
 
 ## Maintenance rules
 
