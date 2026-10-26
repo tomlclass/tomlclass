@@ -75,12 +75,54 @@ def _std_datetime(value: Any) -> Any:
     return value
 
 
+# marker for subtrees absent from the rendered document (emptied containers)
+_OMIT: Any = object()
+
+
 def _to_plain(value: Any) -> Any:
     if isinstance(value, Table):
-        return {k: _to_plain(v) for k, v in value.items()}
-    if isinstance(value, (ArrayOfTables, list)):
+        plain = {
+            k: converted
+            for k, v in value.items()
+            if (converted := _to_plain(v)) is not _OMIT
+        }
+        if not plain and _sealed_and_gone(value):
+            # a dotted-key table whose every line is deleted renders as
+            # nothing — memory must agree with the re-parsed file
+            return _OMIT
+        return plain
+    if isinstance(value, ArrayOfTables):
+        if not value:
+            # a parsed document cannot contain an empty array-of-tables;
+            # one emptied at runtime is absent from the rendered output
+            return _OMIT
         return [_to_plain(v) for v in value]
+    if isinstance(value, (list, tuple)):
+        return [([] if (elem := _to_plain(v)) is _OMIT else elem) for v in value]
     return _std_datetime(value)
+
+
+def _sealed_and_gone(table: Table) -> bool:
+    """
+    A dotted-key (sealed) table whose hosting block holds no live parsed
+    line, dirty entry or pending entry under its prefix — and which carries
+    no own runtime registrations — renders as nothing.
+    """
+    if not table.sealed or table._block is None:
+        return False
+    if table.pending or table.dirty or table.pending_tables or table.pending_aots:
+        return False
+    host = table._block
+    prefix = table._phys
+    n = len(prefix)
+    return (
+        all(
+            not (len(sp) > n and sp[:n] == prefix and sp not in host.deleted)
+            for sp in host.entry_spans
+        )
+        and all(not (len(sp) > n and sp[:n] == prefix) for sp in host.dirty)
+        and all(not (len(sp) > n and sp[:n] == prefix) for sp in host.pending)
+    )
 
 
 def _prune_none(value: Any) -> Any:
