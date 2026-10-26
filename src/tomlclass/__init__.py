@@ -44,7 +44,7 @@ from .schema import Config, Field
 Table._ENGINE_SET = staticmethod(engine_set)
 Table._ENGINE_DEL = staticmethod(engine_del)
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 __all__ = [
     "Array",

@@ -75,6 +75,34 @@ The log records the **net difference between release states**, not the developme
 
 ---
 
+## [0.3.3] - 2026/10/26
+> Released
+
+**Summary**
+Robustness patch closing the 0.3.x series: the public API no longer leaks `RecursionError` (nesting capped on both table paths and API-assigned values), constructed array-of-tables bookkeeping survives every delete/replace/edit order, and annotation-layer saves filter `None` optionals and default-valued fields the way element edits already did. Edit paths measure 15–30% faster along the way.
+
+**Upgrade notes**
+- Recommended for all users of the 0.3 series.
+- Header/dotted-key table paths deeper than 200 levels now raise `TOMLParseError` at parse time (they previously parsed but crashed on `dumps()`/`loads()`); API-assigned values deeper than 200 containers raise `TOMLTypeError` at assignment.
+
+### Fixed
+
+- @wsu2059q
+  - `engine`: nesting is capped at 200 levels on both sides of the API — over-deep header/dotted-key paths raise `TOMLParseError` at parse time, over-deep Python values raise `TOMLTypeError` at assignment (`doc["k"] = ...`, `dumps(mapping)`); `RecursionError` never escapes the public API
+  - `engine`: array slice assignment accepts iterators and generators (previously the assigned elements were silently dropped); extended slices with a mismatched length raise before any state mutates
+  - `engine`: constructed array-of-tables lifecycle — element edits render once (previously duplicated keys produced unparseable output), deletion/replacement retires the rendered `[[blocks]]`, a fresh AoT over a scalar or inline value replaces the old line, appended blocks render after the last element's sub-table sections, deleting a table kills its nested `[[a.b]]` blocks, and root-level keys no longer land inside the last block when the leading headers were replaced
+  - `engine`: deleting an element of an AoT held as a plain value no longer emits a stray line at end of file
+  - `engine`: `to_dict()` / `loads()` return standard-library datetime types for leap seconds and Python 3.10 fractional-second spellings (previously leaked private subclasses)
+  - `config` / `pydantic`: saving after appending a `list[Config]` / `list[Model]` element with a `None` optional no longer raises; appended and wholesale-created elements skip default-valued fields — defaults never persist, matching element edits
+  - `config` / `pydantic`: removing a middle element deletes that element's own lines and the survivor keeps its comments (previously the survivor's comments were dropped and the removed block's kept)
+
+### Improved
+
+- @wsu2059q
+  - `engine`: the renderer no longer re-joins the whole output per flushed pending block, array regions rebuild in one pass skipping clean nested arrays, per-block pending entries are an insertion-ordered dict (O(1) re-assignment instead of an O(n) list rebuild), AoT identity scans are hoisted out of loops and engine hooks are injected at import — edit paths measure 15–30% faster; `scripts/bench/bench.py` gained edit-path workloads and `BASELINE.md` records their numbers
+
+---
+
 ## [0.3.2] - 2026/10/15
 > Released
 
