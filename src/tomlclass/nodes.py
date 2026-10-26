@@ -307,23 +307,43 @@ class Array(list):  # type: ignore[type-arg]
     """
     A TOML array.
 
-    Mutations through the list API switch the array to canonical rendering and
-    mark the owning key/value entry dirty (via ``_owner``).
+    Element assignment splices the new value into its source line; alignment-
+    preserving structural mutations (pop/insert/extend/…) rebuild the array
+    region from the surviving elements' source slices, keeping separators,
+    per-element comments and layout. Order-destroying mutations (sort/reverse)
+    fall back to canonical rendering. Either way the owning key/value entry is
+    marked dirty via ``_owner``.
     """
 
-    __slots__ = ("_appended", "_dirty_indices", "_owner", "_parent_array", "dirty", "span", "spans")
+    __slots__ = (
+        "_appended",
+        "_dirty_indices",
+        "_lead_end",
+        "_owner",
+        "_parent_array",
+        "_structural",
+        "dirty",
+        "span",
+        "spans",
+    )
 
-    def __init__(self, span: tuple[int, int] = (0, 0), spans: list[tuple[int, int] | None] | None = None) -> None:
+    def __init__(
+        self,
+        span: tuple[int, int] = (0, 0),
+        spans: list[tuple[int, int, int] | None] | None = None,
+    ) -> None:
         super().__init__()
         self.span = span
-        self.spans: list[tuple[int, int] | None] = spans if spans is not None else []
+        self.spans: list[tuple[int, int, int] | None] = spans if spans is not None else []
+        self._lead_end = 0  # end of the leading layout after '[' (parser-set)
         self.dirty = False
         self._owner: tuple[Table, tuple[str, ...]] | None = None
         self._parent_array: Array | None = None  # enclosing array when nested
         self._appended: list[Any] = []  # clean-array append: spliced into source, not re-rendered
-        # None = structurally mutated, re-render canonically; a set = only
-        # these element indices were assigned, render by splicing their spans
+        # None = spans no longer trustworthy, re-render canonically; a set =
+        # only these element indices were assigned, render by splicing spans
         self._dirty_indices: set[int] | None = set()
+        self._structural = False  # element order preserved; spans still aligned
 
     def _touch(self) -> None:
         self.dirty = True
@@ -332,9 +352,27 @@ class Array(list):  # type: ignore[type-arg]
             block.dirty[path] = self
 
     def _touch_whole(self) -> None:
-        """Structural mutation: per-element spans are no longer trustworthy."""
+        """Order-destroying mutation: per-element spans are no longer trustworthy."""
         if self._dirty_indices is not None:
             self._dirty_indices = None
+        self._touch()
+
+    def _touch_structure(self) -> None:
+        """
+        Alignment-preserving structural mutation: spans stay aligned with the
+        elements, so the region rebuild keeps every survivor's layout and
+        comments. Elements dirtied earlier lose their source line — the value
+        is current in memory; their span drops so they re-render canonically.
+        """
+        if self._dirty_indices is None:
+            self._touch()  # already canonical — stays canonical
+            return
+        if self._dirty_indices:
+            for j in self._dirty_indices:
+                if j < len(self.spans):
+                    self.spans[j] = None
+            self._dirty_indices = set()
+        self._structural = True
         self._touch()
 
     def append(self, object: Any) -> None:
@@ -355,42 +393,47 @@ class Array(list):  # type: ignore[type-arg]
     def __imul__(self, factor: int) -> Array:  # type: ignore[override]
         # list.__imul__ would duplicate elements behind the renderer's back,
         # leaving memory and output diverging silently — rebuild through the
-        # hooked bookkeeping instead
-        self._touch_whole()
+        # hooked bookkeeping instead. Originals keep their spans; copies
+        # render canonically appended after them.
+        self._touch_structure()
         items = list(self) * factor
-        self.spans = [None] * len(items)
+        if factor <= 0:
+            self.spans.clear()
+        else:
+            self.spans.extend([None] * (len(items) - len(self.spans)))
         list.clear(self)
         list.extend(self, items)
         return self
 
     def extend(self, iterable: Any) -> None:
-        self._touch_whole()
+        self._touch_structure()
         items = list(iterable)
         self.spans.extend([None] * len(items))
         list.extend(self, items)
 
     def insert(self, index: SupportsIndex, object: Any) -> None:
-        self._touch_whole()
+        self._touch_structure()
         self.spans.insert(index, None)
         list.insert(self, index, object)
 
     def pop(self, index: SupportsIndex = -1) -> Any:
-        self._touch_whole()
+        self._touch_structure()
         self.spans.pop(index)
         return list.pop(self, index)
 
     def clear(self) -> None:
-        self._touch_whole()
+        self._touch_structure()
         self.spans.clear()
         list.clear(self)
 
     def remove(self, value: Any) -> None:
-        self._touch_whole()
+        self._touch_structure()
         index = list.index(self, value)
         self.spans.pop(index)
         list.pop(self, index)
 
     def sort(self, /, **kwargs: Any) -> None:
+        # order-destroying: element values move, their source spans cannot
         self._touch_whole()
         list.sort(self, **kwargs)
 
@@ -401,7 +444,7 @@ class Array(list):  # type: ignore[type-arg]
     def __setitem__(self, index: Any, value: Any) -> None:
         self._touch()
         if isinstance(index, slice):
-            self._touch_whole()
+            self._touch_structure()
             # materialize once: measuring len(list(value)) alone would exhaust
             # an iterator RHS before list.__setitem__ consumes it
             items = list(value)
@@ -427,7 +470,7 @@ class Array(list):  # type: ignore[type-arg]
         list.__setitem__(self, i, value)
 
     def __delitem__(self, index: Any) -> None:
-        self._touch_whole()
+        self._touch_structure()
         del self.spans[index]
         list.__delitem__(self, index)
 

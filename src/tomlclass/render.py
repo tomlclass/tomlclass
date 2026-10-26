@@ -455,6 +455,8 @@ def _render_array_edits(source: str, vs: int, ve: int, dirty_value: Any) -> str 
 def _build_region(source: str, a: Any) -> str | None:
     if a._dirty_indices is None or len(a.spans) > len(a) or not a.span:
         return None
+    if a._structural:
+        return _build_structural_region(source, a)
     ops: list[tuple[int, int, str]] = []
     for i in sorted(a._dirty_indices):
         if i < len(a.spans) and a.spans[i] is not None:
@@ -464,7 +466,7 @@ def _build_region(source: str, a: Any) -> str | None:
     for v in a:
         # only children with their own edits need rebuilding; a clean child's
         # region would be the identity op on its span
-        if isinstance(v, Array) and (v.dirty or v._dirty_indices != set() or v._appended):
+        if isinstance(v, Array) and (v.dirty or v._dirty_indices != set() or v._appended or v._structural):
             child = _build_region(source, v)
             if child is None:
                 return None
@@ -486,6 +488,48 @@ def _build_region(source: str, a: Any) -> str | None:
         elems = [format_value(a[i]) for i in appended_indices] + tail
         region = _splice_array_append(region, elems)
     return region
+
+
+def _build_structural_region(source: str, a: Any) -> str | None:
+    """
+    Rebuild an array region after alignment-preserving structural edits.
+
+    The array's leading layout and every surviving parsed element's source
+    slice — value, separator, trailing comment and line layout included —
+    splice back gap-free; inserted/appended elements render canonically with
+    fresh separators. Returns None when nothing parsed survives — canonical
+    rendering is then exact and cheaper.
+    """
+    if not any(sp is not None for sp in a.spans):
+        return None
+    dirty = a._dirty_indices or ()
+    parts: list[str] = [source[a.span[0] : a._lead_end]]  # '[' + leading layout
+    close = a.span[1] - 1  # the ']' index (the span ends right after it)
+    missing_separator = False  # last parsed element's suffix carries no comma
+    for i, sp in enumerate(a.spans):
+        if sp is None:
+            if missing_separator:
+                parts.append(", ")
+                missing_separator = False
+            parts.append(format_value(a[i]))
+            parts.append(", ")
+            continue
+        vs, ve, suffix_end = sp
+        suffix = source[ve:suffix_end]
+        if missing_separator:
+            # the previous parsed element (the original last, comma-less)
+            # directly precedes this one — splice the separator back in
+            parts.append(", ")
+        missing_separator = not suffix.lstrip().startswith(",")
+        if i in dirty:
+            parts.append(format_value(a[i]))
+            parts.append(suffix)  # separator + comment survive
+        else:
+            parts.append(source[vs:suffix_end])
+    region = "".join(parts).rstrip(" \t")
+    # a removed trailing element leaves its line indent at the end of the
+    # previous suffix — trimming lets ']' close its own line
+    return region + source[close : a.span[1]]
 
 
 def _splice_array_append(value_text: str, elems: list[str]) -> str:

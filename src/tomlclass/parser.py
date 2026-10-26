@@ -793,7 +793,7 @@ class Parser:
         self.i += 1
         arr = Array()
         arr._owner = owner
-        spans: list[tuple[int, int]] = []
+        elems: list[tuple[int, int]] = []
         while True:
             self.skip_trivia()  # arrays allow whitespace/comments/newlines
             if self.peek() == "]":
@@ -805,7 +805,7 @@ class Parser:
             value = self.parse_value(owner)
             if isinstance(value, Array):
                 value._parent_array = arr  # nested: render climbs to the outermost array
-            spans.append((vstart, self.i))
+            elems.append((vstart, self.i))
             list.append(arr, value)
             self.skip_trivia()
             if self.peek() == ",":
@@ -816,7 +816,19 @@ class Parser:
                 break
             raise ValueError("expected ',' or ']' in array")
         arr.span = (start, self.i)
-        arr.spans = list[tuple[int, int] | None](spans)
+        # per-element (value_start, value_end, suffix_end): the suffix runs to
+        # the next element's start — or the closing bracket for the last — so
+        # it carries the separator, trailing comment and layout; structural
+        # region rebuilds splice survivors by these self-contained slices.
+        # _lead_end anchors the array's own leading layout (after '[' up to
+        # the original first element) — it belongs to the array, not to any
+        # element, so it survives element removals.
+        close = self.i - 1
+        arr.spans = [
+            (vs, ve, elems[i + 1][0] if i + 1 < len(elems) else close)
+            for i, (vs, ve) in enumerate(elems)
+        ]
+        arr._lead_end = elems[0][0] if elems else close
         return arr
 
     def parse_inline_table(self) -> InlineTable:
