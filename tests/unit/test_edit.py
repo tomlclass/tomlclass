@@ -218,3 +218,52 @@ def test_parse_error_positions():
         assert e.line == 2
         assert e.col == 4
         assert isinstance(e, ValueError)
+
+
+def test_delete_path_basic():
+    doc = tomlclass.parse('[a.b]\nc = 1\nd = 2\n\n[e]\nf = 3\n')
+    assert doc.delete_path("a.b.c") is True
+    assert doc.delete_path("a.b.c") is False  # idempotent
+    assert doc.delete_path("a.b.c.d") is False  # leaf does not exist
+    assert doc.delete_path("x.y.z") is False  # missing intermediate
+    assert doc.delete_path("e.f.g") is False  # non-table intermediate
+    assert doc.find("a.b.d") == 2
+    assert doc.find("e.f") == 3
+    out = doc.dumps()
+    assert "c = 1" not in out
+    assert "d = 2" in out
+    assert "f = 3" in out
+
+
+def test_delete_path_quoted_key():
+    # a quoted segment addresses a literal key containing dots — not nesting
+    doc = tomlclass.parse('"a.b.c" = 1\n[d]\ne = 2\n')
+    assert doc.find('"a.b.c"') == 1
+    assert doc.delete_path('"a.b.c"') is True
+    assert doc.delete_path('"a.b.c"') is False
+    assert doc.delete_path("a.b.c") is False  # the nested path does not exist
+    assert "e = 2" in doc.dumps()
+
+
+def test_delete_path_preserves_comments_and_header():
+    src = '[db] # header note\nport = 1 # trailing\nhost = "h"\n\n[other]\nx = 1\n'
+    doc = tomlclass.parse(src)
+    assert doc.delete_path("db.port") is True
+    out = doc.dumps()
+    assert "# header note" in out
+    assert "# trailing" not in out
+    assert 'host = "h"' in out
+    assert "[db]" in out  # emptied table keeps its header line
+    assert doc.delete_path("db.host") is True
+
+
+def test_delete_path_aot():
+    src = '[[it]]\nn = 1\nkeep = "a"\n\n[[it]]\nn = 2\nkeep = "b"\n'
+    doc = tomlclass.parse(src)
+    assert doc.delete_path("it[1].n") is True
+    assert doc.delete_path("it[1].n") is False
+    assert doc.delete_path("it.n") is False  # no broadcast across elements
+    assert doc.delete_path("it[5].n") is False  # out of range
+    assert doc.delete_path("it[0]") is True  # whole element
+    assert len(doc.find("it")) == 1
+    assert doc.find("it[0].keep") == "b"  # the survivor shifted into index 0

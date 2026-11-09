@@ -69,23 +69,28 @@ Untouched values render as their exact source text; a value you assign re-render
 
 ### Path addressing
 
-One grammar serves `find`, `set_path`, `comment`, `set_comment` and `update`: bare keys, quoted
-keys (`"a.b"` — dots inside quotes are literal) and `[int]` array-of-tables indexing (`it[0].n`).
+One grammar serves `find`, `set_path`, `delete_path`, `comment`, `set_comment` and `update`: bare
+keys, quoted keys (`"a.b"` — dots inside quotes are literal) and `[int]` array-of-tables indexing
+(`it[0].n`).
 
 ```python
 doc.find("server.port")            # -> value or None
 doc.set_path("server.port", 9090)  # assign; missing keys and intermediate tables are created
+doc.delete_path("server.port")     # remove; idempotent — unresolvable paths are a silent no-op
 doc.find("products.name")          # -> ["a", "b"] — an unindexed [[products]] segment projects over the elements
 doc.set_path("products.tag", "x")  # broadcast: assigns into every element
 doc.set_path("products[0].tag", "x")  # indexed: writes exactly element 0
+doc.delete_path("products[1].tag")    # indexed: deletes within that element only (no broadcast)
+doc.delete_path("products[1]")        # delete a whole element
 doc.find("products[1]")            # -> the second element table
 ```
 
 - Unindexed traversal through an `[[aot]]` **projects** on reads and **broadcasts** on writes; with
-  an explicit index the element must exist (`KeyError`/`IndexError` — indices never auto-create)
+  an explicit index the element must exist (`KeyError`/`IndexError` — indices never auto-create).
+  Deletes never broadcast: `delete_path` requires an explicit index through an `[[aot]]`
 - `set_path` builds missing tables as real `[table]` blocks containing their entries — never as a
   dotted line plus an empty header (which would define the table twice); as the terminal segment,
-  `find` returns the array itself
+  `find` returns the array itself; a table emptied by `delete_path` keeps its header line
 - Malformed path syntax raises `ValueError` from every entry point
 
 ## Construction

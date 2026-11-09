@@ -479,6 +479,51 @@ class Document(Mapping[str, Any]):
         else:  # pragma: no cover - last_indexed >= 0 implies aot is set
             raise AssertionError("indexed navigation lost the array")
 
+    def delete_path(self, dotted_path: str) -> bool:
+        """
+        Delete the entry at *dotted_path*. Returns ``True`` when an entry was
+        removed, ``False`` when the path does not resolve — deletion is
+        idempotent (missing keys, a non-table intermediate, or an out-of-range
+        element index are a silent no-op). Removal goes through the mapping
+        API, so untouched entries keep their comments and layout.
+
+        The path grammar matches :meth:`set_path` / :meth:`find`: quote a
+        segment (``'"a.b.c"'``) to address a literal key containing dots.
+        Indexed segments (``it[0].n``) delete within that element only; a
+        bare ``it.n`` does **not** broadcast across elements — a delete must
+        name its target explicitly. Deleting a whole array element is
+        ``delete_path("it[0]")``; ``del doc["it"]`` removes the array itself.
+        """
+        segments = self._split_path(dotted_path)
+        if not segments:
+            return False
+        node: Any = self.root
+        for seg in segments[:-1]:
+            if not isinstance(node, Table) or seg.key not in node:
+                return False
+            node = node[seg.key]
+            for idx in seg.indices:
+                if not isinstance(node, ArrayOfTables) or idx >= len(node):
+                    return False
+                node = node[idx]
+        leaf = segments[-1]
+        if not leaf.indices:
+            if not isinstance(node, Table) or leaf.key not in node:
+                return False
+            del node[leaf.key]
+            return True
+        if not isinstance(node, Table) or leaf.key not in node:
+            return False
+        node = node[leaf.key]
+        for idx in leaf.indices[:-1]:
+            if not isinstance(node, ArrayOfTables) or idx >= len(node):
+                return False
+            node = node[idx]
+        if not isinstance(node, ArrayOfTables) or leaf.indices[-1] >= len(node):
+            return False
+        del node[leaf.indices[-1]]
+        return True
+
     def to_dict(self) -> dict[str, Any]:
         """
         Convert to plain nested dicts (standard-library datetime objects).

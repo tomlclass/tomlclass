@@ -69,19 +69,22 @@ doc["products"] = [...]               # AoT 整体替换：旧元素移除，新
 
 ### 路径寻址
 
-一套语法服务 `find`、`set_path`、`comment`、`set_comment` 与 `update`：裸键、引号键（`"a.b"` —— 引号内的点为字面量）、`[int]` AoT 索引（`it[0].n`）。
+一套语法服务 `find`、`set_path`、`delete_path`、`comment`、`set_comment` 与 `update`：裸键、引号键（`"a.b"` —— 引号内的点为字面量）、`[int]` AoT 索引（`it[0].n`）。
 
 ```python
 doc.find("server.port")            # -> 值或 None
 doc.set_path("server.port", 9090)  # 赋值；缺失的键与中间表自动创建
+doc.delete_path("server.port")     # 删除；幂等——路径无法解析时静默无操作
 doc.find("products.name")          # -> ["a", "b"] —— 未索引的 [[products]] 段投影到每个元素
 doc.set_path("products.tag", "x")  # 广播：向每个元素赋值
 doc.set_path("products[0].tag", "x")  # 索引：只写元素 0
+doc.delete_path("products[1].tag")    # 索引：只删该元素内的字段（不广播）
+doc.delete_path("products[1]")        # 删除整个元素
 doc.find("products[1]")            # -> 第二个元素表
 ```
 
-- 未索引穿过 `[[aot]]` 段：读取**投影**、写入**广播**；带显式索引时元素必须已存在（`KeyError`/`IndexError`——索引不做隐式扩容）
-- `set_path` 把缺失的表构造成包含其条目的真实 `[table]` 块 —— 绝不会生成点号行加空表头（那会重复定义同一张表）；作为末段时，`find` 返回数组本身
+- 未索引穿过 `[[aot]]` 段：读取**投影**、写入**广播**；带显式索引时元素必须已存在（`KeyError`/`IndexError`——索引不做隐式扩容）。**删除永不广播**：`delete_path` 穿过 `[[aot]]` 必须带显式索引
+- `set_path` 把缺失的表构造成包含其条目的真实 `[table]` 块 —— 绝不会生成点号行加空表头（那会重复定义同一张表）；作为末段时，`find` 返回数组本身；被 `delete_path` 删空的表保留其表头行
 - 路径语法错误在所有入口统一抛 `ValueError`
 
 ## 构造
