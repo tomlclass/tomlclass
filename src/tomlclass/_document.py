@@ -21,7 +21,14 @@ __all__ = ["Document", "atomic_write_text"]
 
 def atomic_write_text(path: str | os.PathLike[str], text: str) -> None:
     """
-    Atomically write *text* to *path* (same-dir tempfile + ``os.replace``).
+    Atomically and durably write *text* to *path*.
+
+    Same-dir unique tempfile (``mkstemp``) → ``flush + fsync`` the file data →
+    ``os.replace`` (atomic on POSIX and Windows) → on POSIX, ``fsync`` the
+    containing directory so the replacement survives a power loss instead of
+    leaving an empty file (rename metadata can reach disk before the data
+    blocks under ext4 delayed allocation). The temp file is removed on any
+    failure.
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -29,8 +36,20 @@ def atomic_write_text(path: str | os.PathLike[str], text: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
         Path(tmp).replace(target)
+        if os.name == "posix":
+            dir_fd = os.open(target.parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
     except BaseException:
+        # fdopen may have raised before taking ownership of the fd — close it
+        # so the unlink below is not blocked by an open handle on Windows
+        with contextlib.suppress(OSError):
+            os.close(fd)
         with contextlib.suppress(OSError):
             Path(tmp).unlink()
         raise

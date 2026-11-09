@@ -168,6 +168,48 @@ def test_atomic_save(tmp_path):
     assert list(tmp_path.iterdir()) == [target]  # no temp leftovers
 
 
+def test_atomic_write_durability(tmp_path, monkeypatch):
+    """atomic_write_text fsyncs the file data (and the directory on POSIX) before replace"""
+    import os
+
+    from tomlclass._document import atomic_write_text
+
+    target = tmp_path / "cfg.toml"
+    fsynced_fds: list[int] = []
+    real_fsync = os.fsync
+    monkeypatch.setattr(os, "fsync", lambda fd: (fsynced_fds.append(fd), real_fsync(fd))[1])
+
+    atomic_write_text(target, "a = 1\n")
+
+    assert target.read_text(encoding="utf-8") == "a = 1\n"
+    assert list(tmp_path.iterdir()) == [target]  # no temp leftovers
+    assert len(fsynced_fds) >= 1  # file data hit disk before replace
+    if os.name == "posix":
+        assert len(fsynced_fds) == 2  # directory fsync closes the power-loss gap
+
+
+def test_atomic_write_cleanup_on_failure(tmp_path, monkeypatch):
+    """a write failure removes the temp file and re-raises instead of clobbering the target"""
+    import os
+
+    from tomlclass._document import atomic_write_text
+
+    target = tmp_path / "cfg.toml"
+    target.write_text("keep = 1\n", encoding="utf-8")
+
+    def broken_fdopen(fd, *args, **kwargs):
+        raise OSError("simulated write failure")
+
+    monkeypatch.setattr(os, "fdopen", broken_fdopen)
+    try:
+        atomic_write_text(target, "a = 1\n")
+        raise AssertionError("expected OSError")
+    except OSError:
+        pass
+    assert target.read_text(encoding="utf-8") == "keep = 1\n"  # target untouched
+    assert list(tmp_path.iterdir()) == [target]  # temp cleaned up
+
+
 def test_parse_error_positions():
     try:
         tomlclass.parse("a = 1\nb =\n")

@@ -154,4 +154,4 @@ except tomlclass.TOMLParseError as e:
 
 ## 并发
 
-`Document` / `Table` / `Array` 与 `Config` 实例在并发修改下**不是线程安全的**：编辑记账（span、pending 条目）会互相竞争。对不同源的并行解析相互独立、可以并发执行；跨线程共享文档请保持只读，或在外部同步修改操作。`atomic_write_text`（同目录临时文件 + `os.replace`）保证每次保存对单个文件是原子的，但两个线程保存同一路径仍可能交错——请协调写入方。`Config.i18n_resolver` 是进程级类属性：更换它会立即影响进程内所有 `Config.load` 与模板生成调用。
+`Document` / `Table` / `Array` 与 `Config` 实例在并发修改下**不是线程安全的**：编辑记账（span、pending 条目）会互相竞争。对不同源的并行解析相互独立、可以并发执行；跨线程共享文档请保持只读，或在外部同步修改操作。`atomic_write_text`（同目录临时文件，文件数据 `fsync`、POSIX 下目录 `fsync`，再 `os.replace`）保证每次保存对单个文件原子且持久（断电不会留下空文件），但两个线程保存同一路径仍可能交错——请协调写入方。`Config.i18n_resolver` 是进程级类属性：更换它会立即影响进程内所有 `Config.load` 与模板生成调用。
