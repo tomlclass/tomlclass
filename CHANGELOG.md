@@ -75,6 +75,28 @@ The log records the **net difference between release states**, not the developme
 
 ---
 
+## [0.4.1] - 2026/11/09
+> Released
+
+**Summary**
+Write-path release: `atomic_write_text` is now durable (fsync of the file data before `os.replace`, and of the containing directory on POSIX), and the dotted-path grammar gains its missing third verb — `delete_path`, symmetric with `find` / `set_path`.
+
+**Upgrade notes**
+- Recommended for callers persisting source-of-truth files (config engines, package managers); harmless elsewhere (two small fsyncs per save).
+- `delete_path` is a new API — code using `del doc["a"]["b"]` chains can switch to idempotent single-call deletes.
+
+### Added
+
+- @wsu2059q
+  - `Document.delete_path(dotted_path) -> bool`: delete at any path the grammar can address (bare keys, quoted literal-dot keys, `[int]` AoT indexing) — idempotent (unresolvable paths return `False` instead of raising), routed through the mapping API so untouched entries keep their comments and layout; a table emptied by the deletion keeps its header line; deletes never broadcast across `[[aot]]` elements — an explicit index is required
+
+### Improved
+
+- @wsu2059q
+  - `_document.atomic_write_text` (backs `Document.save` / `Config.save`): the write path is now durable — file data is flushed and `fsync`ed before the atomic replace, and on POSIX the containing directory is fsynced so the replacement survives a power loss; a failing `fdopen` now closes the raw fd before temp cleanup so the temp file is actually removed on Windows instead of lingering under an open handle
+
+---
+
 ## [0.4.0] - 2026/10/26
 > Released
 
